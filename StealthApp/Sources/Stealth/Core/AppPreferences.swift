@@ -60,7 +60,7 @@ enum ReasoningService: String, Codable, CaseIterable, Identifiable {
         case .sharedOpenAI: return "Use Live service's OpenAI"
         case .separateOpenAI: return "OpenAI · separate key"
         case .deepSeek: return "DeepSeek"
-        case .qwen: return "Qwen · Alibaba Cloud"
+        case .qwen: return "Qwen"
         case .glm: return "GLM · Zhipu"
         case .kimi: return "Kimi · Moonshot"
         case .compatible: return "OpenAI-compatible"

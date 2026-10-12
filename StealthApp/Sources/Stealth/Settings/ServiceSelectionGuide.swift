@@ -29,11 +29,11 @@ struct OpenAIAnalysisModelHint: View {
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, settings.language) }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(b("Default: GPT-6.1 Sol with low reasoning effort. Your saved model choice is kept.",
-                   "默认推荐 GPT-6.1 Sol，低推理强度。已保存的模型选择会保留。"))
+            Text(b("Default: GPT-6 Luna with low reasoning effort. Your saved model choice is kept.",
+                   "默认推荐 GPT-6 Luna，低推理强度。已保存的模型选择会保留。"))
                 .font(.caption).foregroundStyle(.secondary)
             if settings.reasoningModel != AppSettings.defaultReasoningModel {
-                Button(b("Use GPT-6.1 Sol · Low", "使用 GPT-6.1 Sol · 低推理强度")) {
+                Button(b("Use GPT-6 Luna · Low", "使用 GPT-6 Luna · 低推理强度")) {
                     var updated = settings
                     updated.reasoningModel = AppSettings.defaultReasoningModel
                     updated.reasoningEffort = "low"

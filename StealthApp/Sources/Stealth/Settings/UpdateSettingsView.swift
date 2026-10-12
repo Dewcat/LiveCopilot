@@ -3,31 +3,78 @@ import SwiftUI
 struct UpdateSettingsView: View {
     @ObservedObject var updates: AppUpdateController
     let language: AppLanguage
-    private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, language) }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(b("Software updates", "软件更新")).font(.headline)
+                Label("软件更新", systemImage: "arrow.down.circle").font(.headline)
                 Spacer()
-                Button(b("Check for Updates…", "检查更新…")) { updates.checkForUpdates() }
-                    .disabled(!updates.canCheck).accessibilityIdentifier("check-for-updates")
+                Button("检查更新") { updates.checkForUpdates() }
+                    .disabled(!updates.canCheck || updates.isWorking || updates.blockingReason() != nil)
+                    .accessibilityIdentifier("check-for-updates")
             }
-            Toggle(b("Automatically check for updates", "自动检查更新"), isOn: Binding(
-                get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
+            HStack(spacing: 18) {
+                Text("当前版本：\(updates.currentDisplay)")
+                Text("最新版本：\(updates.latestVersion?.display ?? (updates.phase == .upToDate ? updates.currentDisplay : "待检查"))")
+                    .foregroundStyle(.secondary)
+            }.font(.callout)
+            Text(updates.statusText).font(.callout).foregroundStyle(updates.phase == .failed ? Color.red : Color.primary)
+                .accessibilityIdentifier("update-status")
+            if !updates.message.isEmpty && updates.phase != .failed { Text(updates.message).font(.caption).foregroundStyle(.secondary) }
+            if [.checking, .downloading, .extracting, .installing].contains(updates.phase) {
+                if let progress = updates.progress { ProgressView(value: progress) } else { ProgressView().controlSize(.small) }
+                if updates.phase == .downloading { Button("取消下载") { updates.cancelDownload() } }
+            }
+            if let release = updates.release {
+                DisclosureGroup("更新内容") {
+                    Text(release.notes).font(.system(size: 12)).lineSpacing(3).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
+                }.accessibilityIdentifier("update-notes")
+                HStack {
+                    if updates.phase == .readyToInstall {
+                        Button("重启并更新") { updates.restartToInstall() }
+                            .disabled(updates.blockingReason() != nil).buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("install-update")
+                    } else if release.supportsInAppInstall {
+                        Button("下载更新") { updates.downloadUpdate() }
+                            .disabled(!updates.canInstall || !updates.canCheck).buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("download-update")
+                    }
+                    Link(release.supportsInAppInstall ? "官方发布页" : "前往官方发布页下载", destination: UpdateRelease.officialPage)
+                }
+            } else if updates.phase == .failed { Link("官方发布页", destination: UpdateRelease.officialPage) }
+            if updates.blockingReason() != nil { Text("当前任务进行中，结束后可检查和安装更新。").font(.caption).foregroundStyle(.secondary) }
+            Toggle("自动检查更新", isOn: Binding(get: { updates.automaticChecks }, set: { updates.setAutomaticChecks($0) }))
                 .disabled(!updates.enabled).accessibilityIdentifier("automatic-update-checks")
-            Text(b("Downloads and installation require your confirmation. Updates preserve your models, documents, history, and API keys.",
-                   "下载与安装由你确认。更新会保留模型、资料、历史和 API Key。"))
-                .font(.caption).foregroundStyle(.secondary)
-            if !updates.enabled {
-                Text(b("Updates are available in the installed release app. Previews and development builds do not check for updates.",
-                       "请在正式安装版中检查更新，预览和开发版本不会联网检查。"))
-                    .font(.caption).foregroundStyle(.secondary)
-            } else if let date = updates.lastCheck {
-                Text(b("Last checked: ", "上次检查：") + date.formatted(date: .abbreviated, time: .shortened))
+            Text("后台静默检查，下载与重启由你确认。").font(.caption).foregroundStyle(.secondary)
+            if let date = updates.lastCheck {
+                Text("上次检查：" + date.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).year().month().day().hour().minute()))
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityIdentifier("software-update-management")
+    }
+}
+
+struct UpdateBanner: View {
+    @ObservedObject var updates: AppUpdateController
+    let isBusy: Bool
+    var body: some View {
+        if !isBusy && updates.showsBanner, let release = updates.release {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "arrow.down.circle.fill").font(.title2).foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("发现新版本 \(release.display)").font(.system(size: 14, weight: .semibold))
+                    Text(release.notes).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: 6) {
+                    Button("查看更新") { updates.viewUpdate() }.buttonStyle(.borderedProminent)
+                    Button("稍后提醒") { updates.remindLater() }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(14).background(Color.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.blue.opacity(0.18)))
+                .accessibilityIdentifier("update-banner")
+        }
     }
 }
 
@@ -35,7 +82,12 @@ struct CheckForUpdatesButton: View {
     @ObservedObject var updates: AppUpdateController
     let language: AppLanguage
     var body: some View {
-        Button(ServiceGuide.text("Check for Updates…", "检查更新…", language)) { updates.checkForUpdates() }
-            .disabled(!updates.canCheck)
+        Button { updates.viewUpdate(); if !updates.hasUpdate { updates.checkForUpdates() } } label: {
+            if let release = updates.release, updates.hasUpdate {
+                Label { Text("更新至 \(release.display)") } icon: {
+                    Image(systemName: "arrow.down.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.blue)
+                }
+            } else { Text("检查更新…") }
+        }.disabled(!updates.enabled).accessibilityIdentifier("menu-update-entry")
     }
 }

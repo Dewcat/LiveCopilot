@@ -5,6 +5,7 @@ struct SettingsView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var hotkeys: HotkeyStore
     @ObservedObject var laya: LayaRuntimeManager
+    @ObservedObject var updates: AppUpdateController
     @State private var confirmLayaRemoval = false
     @State private var page = SettingsPage.general
     @State private var serviceRole = 0
@@ -14,7 +15,7 @@ struct SettingsView: View {
     @State private var connectionMessage = ""
     @State private var showOpenAIKey = false
     @State private var shortcutConflict = false
-    init(coordinator: AppCoordinator) { self.coordinator = coordinator; hotkeys = coordinator.hotkeys; laya = coordinator.laya }
+    init(coordinator: AppCoordinator) { self.coordinator = coordinator; hotkeys = coordinator.hotkeys; laya = coordinator.laya; updates = coordinator.updates }
     private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     private var locked: Bool { coordinator.isRunning || coordinator.isTransitioning }
@@ -42,9 +43,16 @@ struct SettingsView: View {
                 .background { Rectangle().fill(.thinMaterial).ignoresSafeArea(edges: .top) }
             Divider().ignoresSafeArea(edges: .top)
             VStack(alignment: .leading, spacing: 18) {
+                UpdateBanner(updates: updates, isBusy: coordinator.isRunning || coordinator.isTransitioning || coordinator.suggestion.isLoading)
                 Text(t(page.rawValue)).font(.system(size: 24, weight: .semibold))
                 switch page {
-                case .general: ScrollView { general }
+                case .general:
+                    ScrollViewReader { proxy in
+                        ScrollView { general }
+                            .onChange(of: updates.managementRequest) { _, _ in
+                                proxy.scrollTo("software-update-management", anchor: .top)
+                            }
+                    }
                 case .services: ScrollView { services }
                 case .knowledge: knowledge
                 case .shortcuts: shortcuts
@@ -58,6 +66,7 @@ struct SettingsView: View {
         .toggleStyle(TrailingSwitchStyle())
         .environment(\.locale, coordinator.settings.language.locale)
         .onAppear { loadCustomDraft() }
+        .onChange(of: updates.managementRequest) { _, _ in page = .general }
         .sheet(isPresented: $showOpenAIKey) {
             VStack(alignment: .leading, spacing: 18) {
                 Text(t("Manage OpenAI credential")).font(.title2)
@@ -70,7 +79,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 24) {
             AppBrandTitle(iconSize: 64, titleSize: 28)
             Text(AppInfo.display).foregroundStyle(.secondary).textSelection(.enabled)
-            UpdateSettingsView(updates: coordinator.updates, language: coordinator.settings.language)
+            DisclosureGroup("诊断信息") { Text(AppInfo.diagnostic).font(.caption).textSelection(.enabled) }
             Text(b("A native macOS conversation copilot. Listen, find relevant knowledge, and get words you can say aloud.",
                    "原生 macOS 对话助手。听取对话、查找相关资料，生成可以直接说出口的回答。"))
                 .font(.body).fixedSize(horizontal: false, vertical: true)
@@ -97,6 +106,8 @@ struct SettingsView: View {
     }
     private var general: some View {
         VStack(alignment: .leading, spacing: 22) {
+            UpdateSettingsView(updates: updates, language: coordinator.settings.language)
+                .id("software-update-management")
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(b("Getting started", "新用户引导")).font(.headline)
@@ -138,10 +149,9 @@ struct SettingsView: View {
                     Toggle(t("Fit window height to content"), isOn: $coordinator.settings.overlayAutoHeight)
                         .accessibilityIdentifier("overlay-auto-height")
                     Text(t("Stay compact when empty, grow with captions and answers, then scroll at the screen limit. Drag a vertical edge to switch to manual sizing.")).font(.caption).foregroundStyle(.secondary)
-                    Toggle(t("Hide at the right screen edge"), isOn: $coordinator.settings.overlayEdgeHide)
+                    Toggle(b("Automatically dock to edge", "自动贴边"), isOn: $coordinator.settings.overlayEdgeHide)
                         .accessibilityIdentifier("overlay-edge-hide")
-                    Text(t("Starts hidden. Hover at the right edge to reveal; move away to tuck it back. Pin the window or press {shortcut} to keep it within reach.")
-                        .replacingOccurrences(of: "{shortcut}", with: hotkeys.toggleOverlay.display)).font(.caption).foregroundStyle(.secondary)
+                    Text(b("When enabled, the window tucks into the right edge and appears on hover. Turn off to drag its header anywhere on your desktop.", "开启后，悬浮窗自动贴靠右侧边缘，悬停时展开。关闭后，可拖动窗口顶部到桌面任意位置。")).font(.caption).foregroundStyle(.secondary)
                 }.padding(10)
             } label: { Label(t("Floating window"), systemImage: "rectangle.righthalf.inset.filled") }
             SettingsSection {
@@ -358,55 +368,11 @@ struct SettingsView: View {
     }
     private var analysisService: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Picker(t("Provider"), selection: Binding(get: { coordinator.settings.reasoningService }, set: { coordinator.settings.selectAnalysisService($0) })) {
-                ForEach(ReasoningService.allCases) { service in
-                    Text(t(service.label) + (service == .compatible ? b(" · provider pricing", " · 服务商定价") : b(" · billed per token", " · 按 token 计费"))).tag(service)
-                }
-            }.accessibilityIdentifier("analysis-provider")
-            Text(t("This service receives the question, relevant conversation and retrieved excerpts to generate an answer. Audio follows your listening provider selection.")).font(.callout).foregroundStyle(.secondary)
-            if coordinator.settings.reasoningService == .sharedOpenAI {
-                Label(t("Using the Live service credential."), systemImage: "link").font(.headline)
-                CredentialStatus(coordinator: coordinator, analysis: false)
-                Button(t("Manage OpenAI credential")) { showOpenAIKey = true }
-            } else if coordinator.settings.reasoningService == .separateOpenAI || coordinator.settings.reasoningService == .deepSeek {
-                CredentialEditor(coordinator: coordinator, analysis: true).id(coordinator.settings.reasoningService)
+            OnboardingAnswerConfiguration(coordinator: coordinator)
+            if (try? coordinator.settings.analysisCredentialReference()) != nil {
+                CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI)
+                    .id(try? coordinator.settings.analysisCredentialReference().account)
             }
-            switch coordinator.settings.reasoningService {
-            case .sharedOpenAI, .separateOpenAI:
-                SettingsSection {
-                    VStack(spacing: 14) {
-                        modelField("Reasoning model", value: Binding(get: { coordinator.settings.reasoningModel }, set: { coordinator.settings.selectAnalysisModel($0) }))
-                        OpenAIAnalysisModelHint(settings: $coordinator.settings).disabled(locked)
-                        Picker(t("Reasoning effort"), selection: $coordinator.settings.reasoningEffort) {
-                            Text(t("Model default")).tag(""); Text(t("Low (faster)")).tag("low")
-                            Text(t("Medium")).tag("medium"); Text(t("High")).tag("high")
-                            Text("Xhigh").tag("xhigh"); Text(t("Maximum")).tag("max")
-                        }
-                    }.padding(10)
-                } label: { Text("OpenAI Responses") }
-            case .deepSeek:
-                SettingsSection {
-                    VStack(alignment: .leading, spacing: 14) {
-                        modelField("Reasoning model", value: Binding(get: { coordinator.settings.deepSeekModel }, set: { coordinator.settings.selectAnalysisModel($0) }))
-                        Text(b("Flash is the default for faster, lower-cost analysis. You can change the model here.", "默认使用 Flash，优先考虑分析速度和费用；可在此修改模型。"))
-                            .font(.caption).foregroundStyle(.secondary)
-                        Picker(t("Reasoning effort"), selection: $coordinator.settings.deepSeekEffort) {
-                            Text(t("Off")).tag("none"); Text(t("Low (faster)")).tag("low")
-                            Text(t("High")).tag("high"); Text(t("Maximum")).tag("max")
-                        }
-                        Text("https://api.deepseek.com/chat/completions").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    }.padding(10)
-                } label: { Text("DeepSeek") }
-            case .qwen, .glm, .kimi:
-                PresetAnalysisSettings(coordinator: coordinator).id(coordinator.settings.reasoningService)
-            case .compatible: customService
-            }
-            if !coordinator.settings.reasoningService.isPreset {
-                AnalysisPerformanceCard(settings: coordinator.settings)
-            }
-            Text(b("Higher reasoning effort can improve complex answers but takes longer and can use more output tokens. Off disables optional thinking when the model supports it. A separate OpenAI key changes billing credentials, not the model's capability.", "更高思考强度可能改善复杂回答，但通常更慢、输出 token 更多；关闭表示不启用模型可选的思考。独立 OpenAI Key 仅改变计费凭据，不改变模型能力。")).font(.caption).foregroundStyle(.secondary)
-            priceNote(ServiceGuide.analysisPrice(coordinator.settings.reasoningService, model: coordinator.settings.analysisModel, language: coordinator.settings.language),
-                      url: coordinator.settings.reasoningService.pricingURL)
             Text(t("Changes apply to the next answer. Existing knowledge vectors do not need re-indexing when you change only the analysis model.")).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -685,41 +651,32 @@ private struct CredentialStatus: View {
 struct CredentialEditor: View {
     @ObservedObject var coordinator: AppCoordinator
     let analysis: Bool
+    var onboarding = false
     @State private var editing = false
     @State private var value = ""
     @State private var message = ""
     @State private var saving = false
     @State private var confirmingRemoval = false
+    @State private var showKeyCheck = false
     private var available: Bool { analysis ? coordinator.hasAnalysisKey : coordinator.hasAPIKey }
     private var checking: Bool { analysis ? coordinator.isCheckingAnalysisKey : coordinator.isCheckingKey }
     private var needsAuthorization: Bool { analysis ? coordinator.analysisKeyNeedsAuthorization : coordinator.keyNeedsAuthorization }
+    private var credentialIdentity: String {
+        analysis ? ((try? coordinator.settings.analysisCredentialReference()).map(CredentialVault.account) ?? coordinator.settings.reasoningService.rawValue) : "live"
+    }
+    private var checkFeedback: CredentialCheckFeedback? {
+        analysis ? coordinator.analysisKeyCheckFeedback : coordinator.liveKeyCheckFeedback
+    }
     private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
     var body: some View {
-        SettingsSection {
-            VStack(alignment: .leading, spacing: 14) {
-                CredentialStatus(coordinator: coordinator, analysis: analysis)
-                if editing || (!available && !checking && !needsAuthorization) {
-                    SecureField(t(available ? "Enter a replacement key" : "Enter a key to save in Keychain"), text: $value)
-                        .textFieldStyle(.roundedBorder).accessibilityIdentifier("credential-input")
-                    HStack {
-                        Button(t("Save Key")) { save() }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || coordinator.isMock)
-                        if available || needsAuthorization { Button(t("Cancel")) { editing = false; value = "" } }
-                    }
-                }
-                HStack {
-                    if (available || needsAuthorization) && !editing { Button(t("Replace key…")) { editing = true; message = "" }.disabled(coordinator.isMock) }
-                    Button(t(needsAuthorization ? "Authorize saved key" : "Check saved key")) { analysis ? coordinator.refreshAnalysisKeyState(interactive: true) : coordinator.refreshKeyState(interactive: true) }.disabled(checking || saving)
-                    Spacer()
-                    if available || needsAuthorization { Button(t("Remove"), role: .destructive) { confirmingRemoval = true }.disabled(saving || checking || coordinator.isMock) }
-                }
-                if !message.isEmpty { Text(t(message)).font(.caption).textSelection(.enabled) }
-                Text(t("Saved securely on this Mac and reused on launch. Existing development keys are imported once; startup never opens an authorization dialog.")).font(.caption).foregroundStyle(.secondary)
-            }.padding(12)
-        } label: { Text("API Key") }
+        Group {
+            if onboarding { fields }
+            else { SettingsSection { fields.padding(12) } label: { Text("API Key") } }
+        }
         .confirmationDialog(t("Remove this service's saved key?"), isPresented: $confirmingRemoval) {
             Button(t("Remove"), role: .destructive) {
                 Task {
-                    saving = true; defer { saving = false }
+                    saving = true; showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); defer { saving = false }
                     do { try await coordinator.removeCredential(analysis: analysis); message = "Saved key removed." }
                     catch { message = error.localizedDescription }
                 }
@@ -727,9 +684,48 @@ struct CredentialEditor: View {
             Button(t("Cancel"), role: .cancel) {}
         }
         .onDisappear { value = ""; editing = false }
+        .onChange(of: credentialIdentity) { _, _ in showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); message = ""; value = ""; editing = false }
+    }
+    private var fields: some View {
+            VStack(alignment: .leading, spacing: onboarding ? 10 : 14) {
+                CredentialStatus(coordinator: coordinator, analysis: analysis)
+                if editing || (!available && !needsAuthorization) {
+                    SecureField(t(available ? "Enter a replacement key" : "Enter a key to save in Keychain"), text: $value)
+                        .textFieldStyle(.roundedBorder).accessibilityIdentifier("credential-input")
+                    HStack {
+                        Button(onboarding ? ServiceGuide.text("Save to Keychain", "保存到钥匙串", coordinator.settings.language) : t("Save Key")) { save() }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || checking || coordinator.isMock)
+                        if available || needsAuthorization { Button(t("Cancel")) { editing = false; value = "" } }
+                    }
+                }
+                HStack {
+                    if (available || needsAuthorization) && !editing { Button(t("Replace key…")) { editing = true; message = "" }.disabled(coordinator.isMock) }
+                    Button(t(needsAuthorization ? "Authorize saved key" : "Check saved key")) {
+                        showKeyCheck = true; message = ""
+                        analysis ? coordinator.refreshAnalysisKeyState(interactive: true) : coordinator.refreshKeyState(interactive: true)
+                    }.disabled(checking || saving).accessibilityIdentifier("credential-check-saved")
+                    .popover(isPresented: $showKeyCheck, arrowEdge: .top) {
+                        CredentialCheckResultView(feedback: checkFeedback ?? .checking, language: coordinator.settings.language) {
+                            showKeyCheck = false
+                        }
+                    }
+                    Spacer()
+                    if available || needsAuthorization { Button(t("Remove"), role: .destructive) { confirmingRemoval = true }.disabled(saving || checking || coordinator.isMock) }
+                }
+                if let checkFeedback {
+                    Label(checkFeedback.message(coordinator.settings.language), systemImage: checkFeedback.symbol)
+                        .font(.caption).foregroundStyle(checkFeedback == .found ? Color.green : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("credential-check-result")
+                }
+                if !message.isEmpty { Text(t(message)).font(.caption).textSelection(.enabled) }
+                Text(onboarding
+                     ? ServiceGuide.text("Saved in macOS Keychain on this Mac. Each provider's key is managed separately.", "密钥保存在本机 macOS 钥匙串，各服务商密钥独立管理。", coordinator.settings.language)
+                     : t("Saved securely on this Mac and reused on launch. Existing development keys are imported once; startup never opens an authorization dialog."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
     }
     private func save() {
-        let key = value; value = ""; saving = true
+        let key = value; value = ""; saving = true; showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis)
         Task {
             defer { saving = false }
             do { try await coordinator.saveCredential(key, analysis: analysis); editing = false; message = "Saved in macOS Keychain." }
@@ -751,5 +747,25 @@ struct SettingsSection<Content: View, Heading: View>: View {
             content.frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
         }.accessibilityElement(children: .contain)
+    }
+}
+
+/// Anchored to the initiating button so results remain visible even in a scrolled card.
+struct CredentialCheckResultView: View {
+    let feedback: CredentialCheckFeedback
+    let language: AppLanguage
+    let dismiss: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                if feedback == .checking { ProgressView().controlSize(.small) }
+                else { Image(systemName: feedback.symbol).foregroundStyle(feedback == .found ? Color.green : Color.accentColor) }
+                Text(feedback.title(language)).font(.headline)
+            }
+            Text(feedback.message(language)).font(.system(size: 12))
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack { Spacer(); Button(ServiceGuide.text("Done", "知道了", language), action: dismiss) }
+        }.padding(18).frame(width: 290, alignment: .leading)
+            .accessibilityIdentifier("credential-check-popover")
     }
 }

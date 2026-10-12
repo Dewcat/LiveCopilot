@@ -14,6 +14,12 @@ struct OnboardingState: Codable, Equatable {
     var disposition = Disposition.inProgress
     var prefersTyping = false
     var wantsKnowledge = false
+    // Missing in older saved guides: preserve their existing selections.
+    var localSetupReviewed: Bool? = false
+    var speechScenario: OnboardingSpeechScenario?
+    var speechManuallySelected: Bool?
+    // Independent of spoken languages; nil preserves older guides' actual choice.
+    var knowledgeRequested: Bool?
 
     var shouldPresent: Bool { disposition == .inProgress }
     mutating func advance() { step = OnboardingStep(rawValue: step.rawValue + 1) ?? .ready }
@@ -28,7 +34,7 @@ struct OnboardingState: Codable, Equatable {
         // Saved settings (including a damaged file) and existing data belong to an
         // existing user. Never infer a first launch from an async credential check.
         let existing = defaults.object(forKey: "livecopilot.settings") != nil || hasExistingData
-        return Self(disposition: existing ? .existingUser : .inProgress)
+        return Self(disposition: existing ? .existingUser : .inProgress, localSetupReviewed: existing ? true : false)
     }
     func save(defaults: UserDefaults) {
         if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.defaultsKey) }

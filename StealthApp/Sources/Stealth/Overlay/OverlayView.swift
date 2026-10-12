@@ -18,6 +18,7 @@ struct OverlayView: View {
         onboarding = coordinator.onboarding
         self.onContentHeight = onContentHeight; self.onMinimumHeight = onMinimumHeight
     }
+    private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
     private var transcriptSize: CGFloat { OverlayTypography.clamped(coordinator.settings.transcriptFontSize, fallback: 12) }
     private var answerSize: CGFloat { OverlayTypography.clamped(coordinator.settings.answerFontSize, fallback: 14) }
@@ -159,9 +160,12 @@ struct OverlayView: View {
     private func submit() { let value = query; query = ""; coordinator.askText(value) }
     private var header: some View {
         HStack {
-            AppBrandTitle(iconSize: 22)
-            if coordinator.isMock { Text(t("MOCK")).font(.caption2.bold()).foregroundStyle(.orange) }
-            Spacer()
+            HStack {
+                AppBrandTitle(iconSize: 22)
+                if coordinator.isMock { Text(t("MOCK")).font(.caption2.bold()).foregroundStyle(.orange) }
+                Spacer(minLength: 0)
+            }.overlay { OverlayDragRegion() }
+                .help(b("Turn off automatic docking to drag this header anywhere.", "关闭自动贴边后，可拖动这里自由移动窗口。"))
             Button { Task { await coordinator.toggle() } } label: {
                 Image(systemName: coordinator.isRunning ? "stop.circle.fill" : "play.circle.fill")
                     .foregroundStyle(coordinator.isRunning ? Color.red : .green)
@@ -179,7 +183,9 @@ struct OverlayView: View {
             Button { coordinator.settings.overlayEdgeHide.toggle() } label: {
                 Image(systemName: coordinator.settings.overlayEdgeHide ? "pin" : "pin.fill")
                     .foregroundStyle(coordinator.settings.overlayEdgeHide ? Color.secondary : .blue)
-            }.help(t(coordinator.settings.overlayEdgeHide ? "Pin window" : "Unpin and hide at right edge"))
+            }.help(coordinator.settings.overlayEdgeHide
+                   ? b("Turn off automatic docking · drag freely", "关闭自动贴边 · 自由拖动")
+                   : b("Turn on automatic docking", "开启自动贴边"))
                 .accessibilityIdentifier("overlay-pin")
                 .onboardingHighlight(onboarding.visibleTip == .visibility)
             Button { (NSApp.windows.first(where: { $0 is OverlayWindow }) as? OverlayWindow)?.tuckAway() } label: { Image(systemName: "minus") }

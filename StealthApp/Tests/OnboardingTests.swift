@@ -4,6 +4,310 @@ import SwiftUI
 @testable import LiveCopilot
 
 final class OnboardingTests: XCTestCase {
+    @MainActor func testNewGuideDefaultsToMixedLanguagesAndKnowledgeForEveryAnswerStyle() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        for scenario in ScenarioProfile.allCases {
+            app.onboarding.state = OnboardingState()
+            app.settings.scenario = scenario
+            OnboardingRecommendation.applyInitialIfNeeded(app)
+            XCTAssertEqual(app.onboarding.state.speechScenario, .mixedInterview)
+            XCTAssertEqual(app.settings.listeningService, .paraformer)
+            XCTAssertTrue(app.onboarding.state.wantsKnowledge)
+            XCTAssertEqual(app.onboarding.state.knowledgeRequested, true)
+        }
+        OnboardingRecommendation.selectScenario(.singleLanguage, coordinator: app)
+        OnboardingRecommendation.selectKnowledge(false, coordinator: app)
+        OnboardingRecommendation.applyInitialIfNeeded(app)
+        XCTAssertEqual(app.onboarding.state.speechScenario, .singleLanguage)
+        XCTAssertFalse(app.onboarding.state.wantsKnowledge, "Defaults must not overwrite a saved choice on return")
+        await app.shutdown()
+    }
+    @MainActor func testFirstVisitRecommendsOnceAndPreservesCustomSetupOnReturn() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        app.onboarding.state.localSetupReviewed = false
+        OnboardingRecommendation.applyInitialIfNeeded(app)
+        XCTAssertTrue(OnboardingRecommendation.current(app).matches(app))
+        app.settings.listeningService = .openAI
+        app.onboarding.state.wantsKnowledge = false
+        OnboardingRecommendation.applyInitialIfNeeded(app)
+        XCTAssertEqual(app.settings.listeningService, .openAI)
+        XCTAssertFalse(app.onboarding.state.wantsKnowledge)
+        XCTAssertEqual(OnboardingState.load(defaults: defaults, hasExistingData: false).localSetupReviewed, true)
+        // Old serialized guides have no review marker and must retain their choices.
+        let legacy = Data(#"{"version":1,"step":2,"disposition":"inProgress","prefersTyping":false,"wantsKnowledge":false}"#.utf8)
+        app.onboarding.state = try JSONDecoder().decode(OnboardingState.self, from: legacy)
+        OnboardingRecommendation.applyInitialIfNeeded(app)
+        XCTAssertEqual(app.settings.listeningService, .openAI)
+        XCTAssertFalse(app.onboarding.state.wantsKnowledge)
+        await app.shutdown()
+    }
+
+    func testSpeechScenarioRecommendationsUseLanguageNeedsAndHardware() {
+        XCTAssertEqual(OnboardingSpeechScenario.mixedInterview.engine(appleAvailable: true), .paraformer)
+        XCTAssertEqual(OnboardingSpeechScenario.singleLanguage.engine(appleAvailable: true), .apple)
+        XCTAssertEqual(OnboardingSpeechScenario.singleLanguage.engine(appleAvailable: false), .paraformer)
+        XCTAssertEqual(OnboardingSpeechScenario.multilingualMeeting.engine(appleAvailable: false), .openAI)
+        let multilingual = OnboardingRecommendation(scenario: .interview, typing: false, appleReady: false,
+                                                    jevSupported: false, speechScenario: .multilingualMeeting)
+        XCTAssertTrue(multilingual.recommendsJev, "Cloud question detection does not require local Laya hardware")
+    }
+    @MainActor func testLanguageAndKnowledgeChoicesDriveTheSameSavedDownloadPlan() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        OnboardingRecommendation.applyInitialIfNeeded(app)
+        for needsKnowledge in [false, true] {
+            OnboardingRecommendation.selectKnowledge(needsKnowledge, coordinator: app)
+            for scene in OnboardingSpeechScenario.allCases {
+                OnboardingRecommendation.selectScenario(scene, coordinator: app)
+                OnboardingRecommendation.apply(app)
+                XCTAssertEqual(app.settings.listeningService, scene.engine(appleAvailable: app.appleSpeech.available))
+                XCTAssertEqual(app.onboarding.state.wantsKnowledge, needsKnowledge)
+                XCTAssertEqual(OnboardingRecommendation.current(app).wantsKnowledge, needsKnowledge)
+                let setup = OnboardingSetupSnapshot(app)
+                XCTAssertEqual(setup[.knowledge].enabled, needsKnowledge)
+                XCTAssertEqual(setup.resources.contains { $0.kind == .local(.embedding) }, needsKnowledge)
+                let saved = OnboardingState.load(defaults: defaults, hasExistingData: false)
+                XCTAssertEqual(saved.knowledgeRequested, needsKnowledge)
+                XCTAssertEqual(saved.wantsKnowledge, needsKnowledge)
+                XCTAssertEqual(AppSettings.load(defaults: defaults), app.settings)
+            }
+        }
+        OnboardingRecommendation.selectSpeech(.paraformer, coordinator: app)
+        app.settings.automaticSuggestions = false
+        let original = app.settings
+        OnboardingRecommendation.selectKnowledge(false, coordinator: app)
+        XCTAssertEqual(app.settings, original, "Disabling knowledge must retain manual speech, Jev and provider settings")
+        OnboardingRecommendation.selectScenario(.multilingualMeeting, coordinator: app)
+        XCTAssertEqual(app.settings.listeningService, .paraformer)
+        XCTAssertFalse(app.onboarding.state.wantsKnowledge)
+        XCTAssertNil(app.localModels.downloading)
+        XCTAssertTrue(app.localModels.queued.isEmpty)
+        XCTAssertFalse(app.appleSpeech.busy || app.laya.isBusy || app.isRunning)
+        await app.shutdown()
+    }
+    @MainActor func testOlderGuidesKeepKnowledgeChoiceWhenChangingLanguagesOrRestoring() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        for enabled in [false, true] {
+            app.onboarding.state = try JSONDecoder().decode(OnboardingState.self, from: Data("{\"version\":1,\"step\":2,\"disposition\":\"inProgress\",\"prefersTyping\":false,\"wantsKnowledge\":\(enabled)}".utf8))
+            OnboardingRecommendation.selectScenario(.multilingualMeeting, coordinator: app)
+            OnboardingRecommendation.apply(app)
+            XCTAssertEqual(app.onboarding.state.wantsKnowledge, enabled)
+            XCTAssertEqual(app.onboarding.state.knowledgeRequested, enabled)
+        }
+        await app.shutdown()
+    }
+    @MainActor func testScenarioOverrideRestoreAndSavedConfigurationStayConsistent() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        app.settings.reasoningService = .compatible; app.settings.compatibleModel = "keep-model"
+        app.settings.language = .english; app.settings.overlayEdgeHide = false
+        app.onboarding.state.knowledgeRequested = true
+        app.onboarding.state.speechScenario = .mixedInterview
+        OnboardingRecommendation.apply(app)
+        XCTAssertEqual(app.settings.listeningService, .paraformer)
+        OnboardingRecommendation.selectScenario(.multilingualMeeting, coordinator: app)
+        XCTAssertEqual(app.settings.listeningService, .openAI)
+        XCTAssertEqual(app.settings.liveSpeechLanguage, .unrestricted)
+        OnboardingRecommendation.selectSpeech(.paraformer, coordinator: app)
+        OnboardingRecommendation.selectScenario(.singleLanguage, coordinator: app)
+        XCTAssertEqual(app.settings.listeningService, .paraformer, "Keep the explicit override")
+        XCTAssertEqual(app.onboarding.state.speechManuallySelected, true)
+        let before = app.settings
+        OnboardingRecommendation.apply(app)
+        XCTAssertEqual(app.settings.listeningService, app.appleSpeech.available ? .apple : .paraformer)
+        var expected = before
+        expected.listeningService = app.appleSpeech.available ? .apple : .paraformer
+        expected.embeddingService = .local; expected.automaticSuggestions = app.laya.state != .unsupported
+        XCTAssertEqual(app.settings, expected, "Restore must not touch the answer provider, language, window or unrelated settings")
+        XCTAssertEqual(AppSettings.load(defaults: defaults), app.settings)
+        let saved = OnboardingState.load(defaults: defaults, hasExistingData: false)
+        XCTAssertEqual(saved.speechScenario, .singleLanguage)
+        XCTAssertEqual(saved.speechManuallySelected, false)
+        let snapshot = OnboardingSetupSnapshot(app)
+        XCTAssertEqual(OnboardingDownloads.requiresDownload(app), snapshot.needsDownload)
+        // A selection changed in Settings while the guide is open is also a manual override.
+        app.settings.listeningService = .openAI
+        OnboardingRecommendation.selectScenario(.mixedInterview, coordinator: app)
+        XCTAssertEqual(app.settings.listeningService, .openAI)
+        XCTAssertEqual(app.onboarding.state.speechManuallySelected, true)
+        await app.shutdown()
+    }
+    func testDownloadInventoryTracksActualSelectionQueueCompletionAndUnknownSizes() {
+        var settings = AppSettings(); settings.listeningService = .paraformer
+        settings.embeddingService = .local; settings.automaticSuggestions = true
+        var state = OnboardingState(); state.wantsKnowledge = true
+        var inventory = OnboardingSetupInventory()
+        var setup = OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory)
+        XCTAssertEqual(setup.resources.map(\.kind), [.local(.streamingSpeech), .local(.embedding), .laya])
+        XCTAssertEqual(setup.knownBytes, 872_400_115)
+        XCTAssertEqual(setup.unknownSizeCount, 1)
+        XCTAssertNil(setup.resources.last?.bytes, "Never invent a complete Laya/runtime size")
+        inventory.downloading = .streamingSpeech; inventory.queued = [.embedding]
+        inventory.layaState = .installing
+        setup = .init(settings: settings, state: state, inventory: inventory)
+        XCTAssertFalse(setup.needsDownload, "Do not enqueue or download already active resources again")
+        XCTAssertTrue(setup.hasActiveTransfers)
+        inventory.installed = [.streamingSpeech, .embedding]; inventory.downloading = nil; inventory.queued = []
+        inventory.layaInstalled = true; inventory.layaState = .installed
+        setup = .init(settings: settings, state: state, inventory: inventory)
+        XCTAssertTrue(setup.resources.isEmpty)
+        XCTAssertTrue(setup.needsLayaLoad)
+        XCTAssertEqual(setup[.speech].status, .installed)
+        XCTAssertEqual(setup[.proactive].status, .installed)
+        inventory.speechRuntime = .loading; inventory.knowledgeRuntime = .failed; inventory.layaState = .ready
+        setup = .init(settings: settings, state: state, inventory: inventory)
+        XCTAssertEqual(setup[.speech].status, .verifying)
+        XCTAssertEqual(setup[.knowledge].status, .loadFailed)
+        XCTAssertEqual(setup[.proactive].status, .ready)
+        inventory.speechRuntime = .ready
+        XCTAssertEqual(OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory)[.speech].status, .ready)
+        state.prefersTyping = true; state.wantsKnowledge = false
+        setup = .init(settings: settings, state: state, inventory: inventory)
+        XCTAssertTrue(setup.resources.isEmpty)
+        XCTAssertFalse(setup.needsLayaLoad)
+        XCTAssertTrue(setup.capabilities.allSatisfy { !$0.enabled })
+    }
+    func testAppleLanguageChecksAndUnusedTransfersAreNotMisrepresented() {
+        var settings = AppSettings(); settings.listeningService = .apple
+        settings.automaticSuggestions = false
+        var inventory = OnboardingSetupInventory(); inventory.appleAvailable = true
+        inventory.appleInstalled = true; inventory.appleChecked = false
+        var setup = OnboardingSetupSnapshot(settings: settings, state: OnboardingState(), inventory: inventory)
+        XCTAssertEqual(setup[.speech].status, .verify)
+        XCTAssertTrue(setup.resources.isEmpty, "Wait for the current language's actual status")
+        inventory.appleChecked = true; inventory.appleInstalled = false
+        setup = .init(settings: settings, state: OnboardingState(), inventory: inventory)
+        XCTAssertEqual(setup.resources.count, 1); XCTAssertNil(setup.resources.first?.bytes)
+        XCTAssertEqual(setup.resources.first?.kind, .apple(settings.appleSpeechLanguage))
+        inventory.appleInstalled = true; inventory.downloading = .embedding
+        setup = .init(settings: settings, state: OnboardingState(), inventory: inventory)
+        XCTAssertEqual(setup[.speech].status, .ready)
+        XCTAssertTrue(setup.resources.isEmpty)
+        XCTAssertEqual(setup.backgroundOnly, [LocalModelKind.embedding.title])
+    }
+    func testKnownSizesMatchPinnedDistributionManifestAndUnknownDigestStaysUnknown() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("docs/oss-model-manifest.json"))) as? [String: Any])
+        let entries = try XCTUnwrap(object["objects"] as? [[String: Any]])
+        for kind in LocalModelKind.allCases {
+            for download in kind.downloads {
+                let entry = try XCTUnwrap(entries.first { $0["sha256"] as? String == download.sha256 })
+                XCTAssertEqual(download.knownByteCount, (entry["size"] as? NSNumber)?.int64Value)
+            }
+        }
+        let unknown = ModelDownload(url: URL(string: "https://example.invalid/model")!, sha256: "future-digest", name: "fixture")
+        XCTAssertNil(unknown.knownByteCount)
+    }
+    @MainActor func testQuickStartKeepsSelectionsAndStartsNoNewDownloads() async throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
+        app.onboarding.state.step = .models; app.onboarding.state.speechScenario = .mixedInterview
+        OnboardingRecommendation.apply(app)
+        let settings = app.settings, wantsKnowledge = app.onboarding.state.wantsKnowledge
+        OnboardingDownloads.skip(app)
+        XCTAssertEqual(app.onboarding.state.step, .analysis)
+        XCTAssertEqual(app.settings, settings)
+        XCTAssertEqual(app.onboarding.state.wantsKnowledge, wantsKnowledge)
+        XCTAssertNil(app.localModels.downloading); XCTAssertTrue(app.localModels.queued.isEmpty)
+        XCTAssertFalse(app.appleSpeech.busy || app.laya.isBusy || app.isRunning)
+        XCTAssertEqual(AppSettings.load(defaults: defaults), settings)
+        XCTAssertEqual(OnboardingState.load(defaults: defaults, hasExistingData: false).step, .analysis)
+        await app.shutdown()
+    }
+
+    func testCapabilityBadgesRequireVerifiedReadiness() {
+        XCTAssertEqual(OnboardingCapabilityStatus.laya(.notInstalled), .download)
+        XCTAssertEqual(OnboardingCapabilityStatus.laya(.installed), .installed)
+        XCTAssertEqual(OnboardingCapabilityStatus.laya(.loading), .verifying)
+        XCTAssertEqual(OnboardingCapabilityStatus.laya(.ready), .ready)
+        XCTAssertEqual(OnboardingCapabilityStatus.laya(.failed), .attention)
+        XCTAssertEqual(OnboardingCapabilityStatus.apple(available: true, installed: true, busy: false, verified: false), .verify,
+                       "Cached readiness for a different language must not show Ready")
+        XCTAssertEqual(OnboardingCapabilityStatus.apple(available: true, installed: true, busy: false, verified: true), .ready)
+        XCTAssertEqual(OnboardingCapabilityStatus.apple(available: true, installed: false, busy: false, verified: true), .download)
+    }
+    @MainActor func testInstalledLocalFilesAreNotRuntimeVerification() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = LocalModelManager(root: root)
+        XCTAssertEqual(OnboardingCapabilityStatus.local(.streamingSpeech, models: manager), .download)
+        try Self.writeInstalled(.streamingSpeech, root: root)
+        manager.refresh()
+        XCTAssertEqual(OnboardingCapabilityStatus.local(.streamingSpeech, models: manager), .installed)
+        await manager.shutdown()
+    }
+    @MainActor func testLocalCapabilitiesPageRendersAtOriginalSize() async throws {
+        let output = ProcessInfo.processInfo.environment["LIVECOPILOT_UI_ACCEPTANCE"] ?? ""
+        guard !output.isEmpty, !output.hasPrefix("$(") else { throw XCTSkip("Opt-in page rendering") }
+        let root = URL(fileURLWithPath: output)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            for scene in OnboardingSpeechScenario.allCases {
+                for size in [NSSize(width: 1040, height: 660), NSSize(width: 1280, height: 800)] {
+                    let (suite, defaults) = defaults()
+                    let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults,
+                                             mockKnowledgeDirectory: root.appendingPathComponent(suite))
+                    app.settings.language = language
+                    app.onboarding.state.step = .models; app.onboarding.state.localSetupReviewed = true
+                    app.onboarding.state.knowledgeRequested = true
+                    app.onboarding.state.speechScenario = scene
+                    OnboardingRecommendation.apply(app)
+                    let host = NSHostingView(rootView: OnboardingView(coordinator: app, close: {}, beginListening: {}, beginTyping: {}))
+                    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                    window.contentView = host
+                    host.layoutSubtreeIfNeeded()
+                    XCTAssertEqual(host.bounds.size, size)
+                    let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: root.appendingPathComponent("scenario-\(scene.rawValue)-\(language.rawValue)-\(Int(size.width)).png"))
+                    OnboardingRecommendation.selectKnowledge(false, coordinator: app)
+                    host.layoutSubtreeIfNeeded()
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                        .write(to: root.appendingPathComponent("no-knowledge-\(scene.rawValue)-\(language.rawValue)-\(Int(size.width)).png"))
+                    window.orderOut(nil)
+                    await app.shutdown()
+                    defaults.removePersistentDomain(forName: suite)
+                }
+            }
+        }
+    }
+    @MainActor func testCombinedReadyPageRendersAtSupportedSizes() async throws {
+        let output = ProcessInfo.processInfo.environment["LIVECOPILOT_UI_ACCEPTANCE"] ?? ""
+        guard !output.isEmpty, !output.hasPrefix("$(") else { throw XCTSkip("Opt-in page rendering") }
+        let root = URL(fileURLWithPath: output)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            for size in [NSSize(width: 1040, height: 660), NSSize(width: 1280, height: 800)] {
+                let (suite, defaults) = defaults()
+                let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults,
+                                         mockKnowledgeDirectory: root.appendingPathComponent(suite))
+                app.settings.language = language; app.settings.listeningService = .paraformer
+                app.settings.embeddingService = .local
+                app.settings.automaticSuggestions = true
+                app.onboarding.state.wantsKnowledge = true; app.onboarding.state.step = .ready
+                let host = NSHostingView(rootView: OnboardingView(coordinator: app, close: {}, beginListening: {}, beginTyping: {}))
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.contentView = host; host.layoutSubtreeIfNeeded()
+                let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                    .write(to: root.appendingPathComponent("ready-\(language.rawValue)-\(Int(size.width)).png"))
+                window.orderOut(nil); await app.shutdown(); defaults.removePersistentDomain(forName: suite)
+            }
+        }
+    }
+
     @MainActor func testProviderBrandAssetsAreBundledAndCustomEndpointHasNoVendorLogo() throws {
         for service in ReasoningService.allCases where service != .compatible {
             let resource = try XCTUnwrap(service.logoResource)
@@ -292,6 +596,7 @@ final class OnboardingTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults)
         coordinator.settings.scenario = .interview
+        coordinator.onboarding.state.knowledgeRequested = true
         coordinator.onboarding.state.prefersTyping = true
         let originalSpeech = coordinator.settings.listeningService
         OnboardingRecommendation.apply(coordinator)

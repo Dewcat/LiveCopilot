@@ -2,6 +2,23 @@
 
 The public source repository is `carey-bk/LiveCopilot`. Preserve the upstream Stealth history and MIT license. Release assets belong in GitHub Releases; `dist/` is ignored by Git. No runtime data or credentials are copied into the app or disk image.
 
+## Public version and internal build
+
+Edit **only `StealthApp/Version.xcconfig` → `MARKETING_VERSION`** for the next public version. Use three numeric components: major for architectural changes, minor for new features or substantial improvements, patch for fixes and small improvements. XcodeGen applies this file to Debug and Release; `Info.plist` substitutes that value into `CFBundleShortVersionString`. Application UI reads the metadata and displays `vMAJOR.MINOR.PATCH`.
+
+`CURRENT_PROJECT_VERSION` remains an independent development build. Distribution signing assigns a monotonically increasing UTC build to `CFBundleVersion`. Builds appear only in diagnostics and release manifests, and retain Sparkle compatibility with older clients. Never replace them with a lower counter or change a published release to disguise a rebuild. A new public release needs a new public version; the new client deliberately does not notify users about another build of the same public version.
+
+From the repository root:
+
+```bash
+RELEASE_VERSION="$(python3 StealthApp/scripts/release-version.py)"
+RELEASE_TAG="$(python3 StealthApp/scripts/release-version.py --tag)"
+python3 StealthApp/scripts/release-version.py --check-tag "$RELEASE_TAG" \
+  --check-app /absolute/path/to/validated/LiveCopilot.app
+```
+
+Use `$RELEASE_TAG` for the GitHub Release tag and the versioned Hong Kong directory; use `$RELEASE_VERSION` in the DMG name. Signing rejects a stale application version, packaging validates the app against the same source, and finalization rejects a mismatched DMG filename. Release metadata in `site/download.json`, download pages and the signed feed is a snapshot of the **published** artifact, not another source for the next build. Change it only when publishing the matching artifact. Keep existing tags, release assets and historical notes unchanged.
+
 ## Developer ID release (1.4.1 and later)
 
 The maintainer needs an installed **Developer ID Application** certificate and its private key. Keep the private key in Keychain. `setup-signing.sh` now only lists identities; it no longer creates or trusts a self-signed root or changes key ACLs. Unsigned/ad-hoc Debug builds remain separate from distribution builds.
@@ -114,6 +131,10 @@ The public Ed25519 key is in `Resources/Info.plist`. The private key stays in th
 
 The release feed is `https://carey-bk.github.io/LiveCopilot/updates/appcast.xml`. Automatic checking defaults on for fresh 2.2 installations (2.1 defaulted off); existing saved preferences are retained. Automatic installation is disabled, system profiling is disabled, signed feeds are required, and package verification runs before extraction. Debug/mock/preview builds do not check this feed. A Debug-only QA bundle may use a loopback feed with its own identity and isolated preview data.
 
+Starting in 2.3, one `AppUpdateController` drives the settings-window banner, persistent menu marker and General → Software Update. Sparkle's custom user driver embeds its flow in those controls. It uses the normal startup schedule and a six-hour interval, retaining a seven-day metadata cache. Cached metadata can show availability but cannot authorize a download: an explicit download rechecks the signed feed. Background failures do not open windows. Snoozing hides the banner for the process session without clearing the menu marker.
+
+The public-version gate compares numeric major/minor/patch components, accepts historical `v` prefixes and two-part versions, and excludes prereleases. Same or older public versions never notify or downgrade. Sparkle still enforces its build, OS and signature checks; a newer public version that cannot pass the installation checks offers the official GitHub Release page instead. Active listening, transitions, answer generation, indexing or model preparation suppress the banner and block checks/restarts. Returning to idle never installs automatically. The floating answer panel contains no update UI.
+
 After both the app and DMG are notarized, stapled, and finalized, place the final DMG and a matching HTML fragment with release notes in a dedicated update staging directory. Do not re-sign or re-staple the DMG after generating its update signature.
 
 ```bash
@@ -135,3 +156,5 @@ Keep the signed appcast bytes unchanged: formatting, templating, or newline conv
 Publish the matching GitHub Release and verify its assets first. Mirror the identical finalized DMG to Hong Kong OSS, verify its SHA-256 and anonymous download, then generate the signed feed using that versioned OSS URL and deploy the website/feed. Keep GitHub Releases as the manual download fallback. The feed itself remains on GitHub Pages; no IP routing is involved. Check the live feed bytes and download hash, then exercise Check for Updates in the canonical installed release. A source push or local signed feed alone does not establish working public updates. Versions before 2.1 lack Sparkle and require one manual upgrade.
 
 For an isolated end-to-end check, build Debug, run `python3 StealthApp/scripts/prepare-updater-qa.py`, serve its `build/updater-qa/server` on `127.0.0.1:18746`, and open only the staged QA app. Verify discovery, download, installation, and relaunch from build 100 to 101 without recording, paid API calls, or changing production data. Preserve QA evidence before using a fresh staging directory.
+
+The fixture uses public versions 2.2.0 → 2.2.1 and an independent QA bundle identity. To run its XCTest integration, pass `LIVECOPILOT_UPDATE_FIXTURE=/absolute/path/to/fixture` while the loopback server is running. Run that test before updating the fixture's installed app. Use `prepare-updater-qa.py --output /new/fixture/path` for another run; existing evidence is never overwritten.

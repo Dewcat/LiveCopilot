@@ -123,6 +123,18 @@ struct ModelDownload: Sendable {
         url: URL(string: "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/2d48f1737679ad900d5c26c5aad5410e9c70fdca/bge-m3-Q8_0.gguf")!,
         sha256: "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167", name: "bge-m3-Q8_0.gguf",
         mirrors: [URL(string: "https://modelscope.cn/models/gpustack/bge-m3-GGUF/resolve/master/bge-m3-Q8_0.gguf")!])
+    /// Exact object lengths in docs/oss-model-manifest.json, keyed by the pinned SHA-256.
+    /// A new payload without a matching manifest entry deliberately has unknown size.
+    var knownByteCount: Int64? {
+        switch sha256 {
+        case "81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a": return 165_462_184
+        case "f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f": return 71_664_561
+        case "59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6": return 75_756
+        case "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6": return 643_854
+        case "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167": return 634_553_760
+        default: return nil
+        }
+    }
     func verify(_ file: URL) throws {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }

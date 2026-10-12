@@ -53,15 +53,15 @@ enum CoreChecks {
         }
         try check("analysis defaults favor current fast cost-effective models") {
             let settings = AppSettings()
-            try expect(settings.reasoningModel == "gpt-6.1-sol" && settings.reasoningEffort == "low", "OpenAI analysis default is not 6.1 Sol low effort")
+            try expect(settings.reasoningModel == "gpt-6-sol" && settings.reasoningEffort == "low", "OpenAI analysis default is not Sol low effort")
             let unset = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-            try expect(unset.reasoningModel == "gpt-6.1-sol", "missing model did not receive the new default")
+            try expect(unset.reasoningModel == "gpt-6-sol", "missing model did not receive the new default")
             let pinned = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"reasoningModel":"gpt-6-sol","reasoningEffort":"high"}"#.utf8))
             try expect(pinned.reasoningModel == "gpt-6-sol" && pinned.reasoningEffort == "high", "saved model choice was overwritten")
-            try expect(settings.deepSeekModel == "deepseek-flash" && settings.deepSeekEffort == "low", "DeepSeek analysis default is not Flash low effort")
-            try expect(settings.qwenConnection.model == "qwen3.8-flash" && settings.qwenConnection.thinking == .low, "Qwen Flash default is missing")
-            try expect(settings.glmConnection.model == "glm-5.3-flash" && settings.glmConnection.thinking == .low, "GLM Flash default must leave mandatory thinking enabled")
-            try expect(settings.kimiConnection.model == "kimi-k2.6" && settings.kimiConnection.thinking == .disabled, "Kimi general low-latency default changed")
+            try expect(settings.deepSeekModel == "deepseek-flash" && settings.deepSeekEffort == "none", "DeepSeek analysis default is not Flash Off")
+            try expect(settings.qwenConnection.model == "qwen3.8-flash" && settings.qwenConnection.thinking == .disabled, "Qwen Flash default is missing")
+            try expect(settings.glmConnection.model == "glm-5.3-flashx" && settings.glmConnection.thinking == .low, "GLM Flash default must leave mandatory thinking enabled")
+            try expect(settings.kimiConnection.model == "kimi-k2.6" && settings.kimiConnection.thinking == .disabled, "Kimi recommended thinking mode changed")
             let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
             try expect(restored == settings, "analysis defaults did not persist")
             let legacy = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"reasoningModel":"gpt-5.6-sol","qwenConnection":{"baseURL":"https://dashscope.aliyuncs.com/compatible-mode/v1","model":"qwen-plus","thinking":"disabled"},"glmConnection":{"baseURL":"https://open.bigmodel.cn/api/paas/v4","model":"glm-5.2","thinking":"modelDefault"}}"#.utf8))
@@ -121,10 +121,10 @@ enum CoreChecks {
             try expect(ServiceGuide.livePrice("gpt-live-1", language: .english).contains("$0.10"), "dual-session charge omitted")
             try expect(ServiceGuide.embeddingPrice("text-embedding-3-large", language: .english).contains("$0.13"), "embedding rate incorrect")
             try expect(ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6-luna", language: .english).contains("$0.10") && ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6-luna", language: .english).contains("$0.50"), "Luna standard rates incorrect")
-            try expect(ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6-sol", language: .english).contains("output $10"), "Sol standard rates missing")
-            try expect(ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6.1-sol", language: .english).contains("cached input $0.10"), "6.1 Sol rates missing")
-            try expect(ServiceGuide.analysisPrice(.deepSeek, model: "deepseek-flash", language: .english).contains("$0.15 / $0.30"), "flash peak rates incorrect")
-            try expect(ServiceGuide.analysisPrice(.deepSeek, model: "deepseek-v4-pro", language: .english).contains("$0.66 / $1.32"), "Pro accidentally quoted Flash rates")
+            try expect(ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6-sol", language: .english).contains("Output $10.00"), "Sol standard rates missing")
+            try expect(ServiceGuide.analysisPrice(.sharedOpenAI, model: "gpt-6.1-sol", language: .english).contains("Input $2.00"), "6.1 Sol rates missing")
+            try expect(ServiceGuide.analysisPrice(.deepSeek, model: "deepseek-flash", language: .english).contains("Input $0.15"), "Flash reference-table off-peak rates incorrect")
+            try expect(ServiceGuide.analysisPrice(.deepSeek, model: "deepseek-v4-pro", language: .english) == ServiceGuide.unknown(.english), "Pro accidentally quoted Flash rates")
             for provider in [ReasoningService.compatible, .deepSeek] {
                 try expect(ServiceGuide.analysisPrice(provider, model: "gpt-5.6-sol", language: .english) == ServiceGuide.unknown(.english), "cross-provider price guessed")
             }
@@ -374,7 +374,7 @@ enum CoreChecks {
         try check("HTTP failure messages do not include secrets") {
             for code in [401, 403, 429, 500, 400] {
                 do { try OpenAIHTTP.check(code); throw CheckError(description: "HTTP failure accepted") }
-                catch is CopilotError { }
+                catch is ServiceHTTPFailure { }
             }
         }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("livecopilot-tests-" + UUID().uuidString)
@@ -526,9 +526,9 @@ enum CoreChecks {
                 try expect((body["thinking"] != nil) == (service == .deepSeek || service == .kimi || service == .glm), "vendor options leaked to custom service")
             } else {
                 try expect(body["store"] as? Bool == false, "OpenAI storage contract changed")
-                try expect(request.url?.path == "/v1/responses" && body["model"] as? String == "gpt-6.1-sol", "new default not routed through Responses")
+                try expect(request.url?.path == "/v1/responses" && body["model"] as? String == "gpt-6-sol", "new default not routed through Responses")
                 try expect((body["reasoning"] as? [String: String])?["effort"] == "low", "supported low reasoning effort changed")
-                try expect(body["service_tier"] == nil && body["temperature"] == nil, "model upgrade added a paid tier or incompatible parameter")
+                try expect(body["service_tier"] as? String == "default" && body["temperature"] == nil, "Standard request did not pin the default tier or added an incompatible parameter")
             }
             passed.append("analysis routing and credential isolation: " + service.rawValue)
         }
@@ -558,20 +558,21 @@ enum CoreChecks {
             let endpoints = [ReasoningService.qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
                              .glm: "https://open.bigmodel.cn/api/paas/v4/chat/completions", .kimi: "https://api.moonshot.cn/v1/chat/completions"]
             for (service, endpoint) in endpoints {
-                for thinking in [AnalysisThinking.modelDefault, .disabled, .enabled] {
+                let base = AppSettings()
+                let model = service == .qwen ? base.qwenConnection.model : service == .glm ? base.glmConnection.model : base.kimiConnection.model
+                for thinking in service.availableThinkingModes(for: model) {
                     var settings = AppSettings(); settings.reasoningService = service
-                    settings.presetConnection!.thinking = thinking
+                    settings.analysisThinking = thinking
                     let provider = try ReasoningProviderFactory.make(settings: settings, liveKey: nil, analysisKey: "fixture") as! ChatCompletionsProvider
                     let http = try provider.httpRequest(answer)
                     let body = try JSONSerialization.jsonObject(with: http.httpBody!) as! [String: Any]
                     try expect(http.url?.absoluteString == endpoint && body["model"] as? String == settings.analysisModel, "wrong preset endpoint or model")
-                    try expect(body["temperature"] == nil && body["reasoning_effort"] == nil, "unsupported sampling parameters sent")
-                    if thinking == .modelDefault || (service == .glm && thinking == .disabled) {
-                        try expect(body["thinking"] == nil && body["enable_thinking"] == nil, "default thinking not delegated to model")
-                    } else if service == .qwen {
-                        try expect(body["enable_thinking"] as? Bool == (thinking == .enabled) && body["thinking"] == nil, "Qwen wire format incorrect")
+                    try expect(body["temperature"] == nil, "unsupported sampling parameters sent")
+                    try expect(body["reasoning_effort"] as? String == thinking.effort, "wrong effort parameter")
+                    if service == .qwen {
+                        try expect(body["enable_thinking"] as? Bool == (thinking != .disabled) && body["thinking"] == nil, "Qwen wire format incorrect")
                     } else {
-                        try expect((body["thinking"] as? [String: String])?["type"] == thinking.rawValue && body["enable_thinking"] == nil, "GLM/Kimi wire format incorrect")
+                        try expect((body["thinking"] as? [String: String])?["type"] == (thinking == .disabled ? "disabled" : "enabled") && body["enable_thinking"] == nil, "GLM/Kimi wire format incorrect")
                     }
                 }
             }

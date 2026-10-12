@@ -80,8 +80,9 @@ struct OnboardingView: View {
     private func pageContent(_ page: OnboardingStep) -> some View {
         GeometryReader { geometry in
           HStack(spacing: 36) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: page == .analysis ? 14 : 18) {
                 Text(title(page)).font(.system(size: 32, weight: .semibold)).tracking(-0.7)
+                    .lineLimit(page == .analysis ? 1 : nil).minimumScaleFactor(0.7)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("onboarding-title")
                 Text(subtitle(page)).font(.system(size: 14)).foregroundStyle(.secondary)
                     .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
@@ -97,8 +98,8 @@ struct OnboardingView: View {
         switch page {
         case .language: return b("A little preparation.\nA clearer conversation.", "准备一下，\n从容开口。")
         case .introduction: return b("Stay in the\nconversation.", "专注对话，\n让思路跟上。")
-        case .models: return b("Make this Mac\nyour copilot.", "让这台 Mac\n成为你的助手。")
-        case .analysis: return b("Connect your\nanswer service.", "连接你的\n回答服务。")
+        case .models: return b("Your local\ncapabilities.", "本地能力配置")
+        case .analysis: return b("Connect your answer service", "连接你的回答服务")
         case .permissions: return b("Choose what\nLiveCopilot hears.", "选择让助手\n听到什么。")
         case .ready: return b("Your first\nconversation.", "开始你的\n第一次体验。")
         }
@@ -107,10 +108,10 @@ struct OnboardingView: View {
         switch page {
         case .language: return b("Choose your interface language. You can change it anytime in Settings.", "选择界面语言，之后随时可以在设置中更改。")
         case .introduction: return b("Live captions, relevant knowledge, and words you can say aloud. Choose how you want to begin.", "实时看懂对话，查找相关资料，获得可以说出口的回答建议。选择你的使用方式。")
-        case .models: return b("Enable the capabilities you need. Downloads can continue while you finish setting up.", "按需准备本地能力。开始下载后，可以继续完成后面的设置。")
-        case .analysis: return b("Your chosen service generates answers. A saved key and a successful connection test are separate checks.", "由你选择的 AI 服务生成回答。保存密钥后，可以主动测试连接。")
+        case .models: return b("Start with the recommended setup for this Mac. Customize only what you need; downloads continue in the background.", "从适合这台 Mac 的推荐方案开始，也可按需自定义。下载会在后台继续。")
+        case .analysis: return b("Your chosen AI service generates answers.\nAdd an API key to get started.", "由你选择的AI服务生成回答\n配置API KEY后即可使用")
         case .permissions: return b("Permissions are requested only when you click. Typing a question needs no audio access.", "点击按钮后才会请求系统权限。仅输入问题，无需音频权限。")
-        case .ready: return b("See what is available, try a sample, or continue setting up. You can return to this guide from Settings.", "查看当前准备情况，体验示例或继续配置。以后也可以从设置重新打开引导。")
+        case .ready: return b("Review your setup, then try a question below. You can return to this guide from Settings.", "查看当前准备情况，在下方试问一句。以后也可以从设置重新打开引导。")
         }
     }
     @ViewBuilder private func leftContent(_ page: OnboardingStep) -> some View {
@@ -137,19 +138,19 @@ struct OnboardingView: View {
                         Text(L10n.text(scenario.rawValue, language: coordinator.settings.language)).tag(scenario)
                     }
                 }.disabled(locked).accessibilityIdentifier("onboarding-scenario")
-                Text(b("Sets the answer style and the next page's recommendation.", "决定回答风格，以及下一页的配置推荐。"))
+                Text(b("Sets the answer style. Choose languages and knowledge needs on the next page.", "决定回答风格，下一页可选择使用语言及知识库需求。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         case .models:
-            OnboardingRecommendationView(coordinator: coordinator)
-            OnboardingNote(icon: "internaldrive", title: b("Already installed? Keep it.", "已有模型，继续使用。"),
-                           detail: b("Existing downloads are detected and reused. Local processing has no API fee.", "自动识别已有模型，避免重复下载。本地处理不产生 API 调用费。"))
-            if models.downloading != nil || apple.busy || laya.isBusy {
-                OnboardingNote(icon: "arrow.down.circle", title: b("Downloads in progress", "正在后台准备"), detail: b("Keep this app open. Progress remains available in Settings.", "保持应用运行。设置中也可以查看下载状态。"))
-            }
+            OnboardingDetectedModelsView(coordinator: coordinator)
         case .analysis:
-            OnboardingNote(icon: "lock.shield", title: b("Know what leaves this Mac", "清楚数据去向"), detail: privacyText)
-            OnboardingNote(icon: "key.horizontal", title: b("Stored in macOS Keychain", "保存在 macOS 钥匙串"), detail: b("Keys stay on this Mac. Each provider keeps its own credential.", "密钥保留在本机，各服务的凭据独立管理。"))
+            VStack(alignment: .leading, spacing: 12) {
+                Label(b("Prioritize response speed in live conversations", "实时场景优先关注响应速度"), systemImage: "bolt")
+                Label(b("Low reasoning balances speed and quality", "建议采用Low推理深度取得速度和质量的平衡"), systemImage: "gauge.with.dots.needle.33percent")
+                Label(b("Keys stay in this Mac's Keychain", "密钥仅保存在本机 macOS 钥匙串"), systemImage: "lock.shield")
+                Label(b("Set up or change your service later", "可以稍后补充或更换配置"), systemImage: "slider.horizontal.3")
+            }.font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85).fixedSize(horizontal: false, vertical: true)
+            OnboardingAnswerRecommendations(language: coordinator.settings.language)
         case .permissions:
             OnboardingNote(icon: store.state.prefersTyping ? "keyboard" : coordinator.settings.mode == .remote ? "headphones" : "mic",
                            title: store.state.prefersTyping ? b("Typing first", "先输入问题") : L10n.text(coordinator.settings.mode.rawValue, language: coordinator.settings.language),
@@ -177,15 +178,6 @@ struct OnboardingView: View {
                                         beginListening: beginListening, beginTyping: beginTyping)
         }
     }
-    private var privacyText: String {
-        let speech = coordinator.settings.listeningService.isLocal
-            ? b("Speech is transcribed on this Mac. ", "语音在本机转写。")
-            : b("Audio is sent to OpenAI for transcription. ", "音频发送至 OpenAI 进行识别。")
-        let knowledge = coordinator.settings.embeddingService == .local
-            ? b("Knowledge embeddings stay local. ", "资料向量在本机生成。")
-            : b("Knowledge indexing sends extracted text to OpenAI. ", "资料索引会将提取文本发送至 OpenAI。")
-        return speech + knowledge + b("Generating an answer sends relevant conversation and selected excerpts to your answer service.", "生成回答时，相关对话和资料片段会发送至回答服务。")
-    }
     private var footer: some View {
         HStack(spacing: 14) {
             Button(b("Back", "返回")) { store.state.back() }
@@ -194,11 +186,15 @@ struct OnboardingView: View {
                 .padding(.leading, 6)
             Spacer(minLength: 16)
             if step == .models {
-                Button(b("Download later", "稍后下载")) { store.state.advance() }
+                Button(b("Use available capabilities", "先用现有能力")) { OnboardingDownloads.skip(coordinator) }
                     .buttonStyle(OnboardingQuietButtonStyle(reduceMotion: reduceMotion)).accessibilityIdentifier("onboarding-skip-download")
+            } else {
+                Button(b("Set up later", "稍后设置")) {
+                    if step == .analysis { store.state.advance() }
+                    else { store.deferSetup(); close() }
+                }
+                    .buttonStyle(OnboardingQuietButtonStyle(reduceMotion: reduceMotion)).accessibilityIdentifier("onboarding-defer")
             }
-            Button(b("Set up later", "稍后设置")) { store.deferSetup(); close() }
-                .buttonStyle(OnboardingQuietButtonStyle(reduceMotion: reduceMotion)).accessibilityIdentifier("onboarding-defer")
             Button(nextTitle) {
                 if step == .ready { store.complete(); close() }
                 else {
@@ -206,12 +202,17 @@ struct OnboardingView: View {
                     store.state.advance()
                 }
             }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+                .disabled(step == .models && !store.state.prefersTyping && coordinator.settings.listeningService == .apple && apple.checkedLanguage != coordinator.settings.appleSpeechLanguage)
                 .accessibilityIdentifier("onboarding-next")
         }
     }
     private var nextTitle: String {
         if step == .ready { return b("Enter LiveCopilot", "进入 LiveCopilot") }
-        if step == .models && !coordinator.isMock && !locked && OnboardingDownloads.hasPending(coordinator) { return b("Download & continue", "下载并继续") }
+        if step == .models && !locked && OnboardingDownloads.requiresDownload(coordinator) {
+            return OnboardingRecommendation.current(coordinator).matches(coordinator)
+                ? b("Download recommended setup & continue", "下载推荐配置并继续")
+                : b("Download selected setup & continue", "下载所选配置并继续")
+        }
         return b("Continue", "继续")
     }
     private func languageOption(_ language: AppLanguage, _ title: String) -> some View {

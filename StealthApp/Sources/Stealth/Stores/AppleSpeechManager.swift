@@ -3,7 +3,10 @@ import Combine
 
 @MainActor final class AppleSpeechManager: ObservableObject {
     @Published private(set) var installed = false
+    @Published private(set) var checkedLanguage: AppleSpeechLanguage?
     @Published private(set) var busy = false
+    @Published private(set) var failedLanguage: AppleSpeechLanguage?
+    var downloadFailed: Bool { failedLanguage != nil }
     @Published private(set) var message = ""
     private var task: Task<Void, Never>?
     private var revision = UUID()
@@ -13,18 +16,20 @@ import Combine
         let ready = await AppleSpeechSupport.installed(language)
         guard revision == id else { return }
         installed = ready
+        checkedLanguage = language
         if !busy { message = available ? (ready ? "Installed · offline ready" : "Not downloaded") : "Apple speech requires macOS 26 and a supported Mac and language." }
     }
     func install(_ language: AppleSpeechLanguage) {
         guard !busy else { return }
-        busy = true; message = "Downloading Apple speech language…"
+        busy = true; failedLanguage = nil; message = "Downloading Apple speech language…"
         task = Task {
             do {
                 try await AppleSpeechSupport.install(language)
                 message = "Installed · offline ready"
             } catch is CancellationError { message = "Apple speech download cancelled." }
-            catch { message = "Apple speech download failed. Check the network and retry." }
+            catch { failedLanguage = language; message = "Apple speech download failed. Check the network and retry." }
             busy = false; installed = await AppleSpeechSupport.installed(language)
+            checkedLanguage = language
             task = nil
         }
     }

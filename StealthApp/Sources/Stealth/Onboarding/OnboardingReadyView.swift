@@ -8,8 +8,6 @@ struct OnboardingReadyView: View {
     @ObservedObject private var models: LocalModelManager
     @ObservedObject private var apple: AppleSpeechManager
     @ObservedObject private var laya: LayaRuntimeManager
-    private enum Panel { case readiness, example, practice }
-    @State private var panel = Panel.readiness
     @State private var practiceQuestion = ""
     @State private var practiceAnswer = ""
     @State private var practiceError = ""
@@ -34,22 +32,16 @@ struct OnboardingReadyView: View {
         (coordinator.settings.mode == .inPerson || permissions.screenAudio)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Picker(b("First conversation", "首次体验"), selection: $panel) {
-                Text(b("Readiness", "准备情况")).tag(Panel.readiness)
-                Text(b("Example", "体验示例")).tag(Panel.example)
-                Text(b("Try a question", "试问一句")).tag(Panel.practice)
-            }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("onboarding-ready-panel")
-            Group {
-                switch panel {
-                case .readiness: readiness
-                case .example:
-                    OnboardingConversationPreview(language: coordinator.settings.language, scenario: coordinator.settings.scenario)
-                case .practice:
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(b("Readiness", "准备情况")).font(.headline)
+                    readiness
+                    Divider()
                     OnboardingPracticeView(coordinator: coordinator, question: $practiceQuestion,
                                            answer: $practiceAnswer, error: $practiceError)
-                }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }.padding(2).frame(maxWidth: .infinity, alignment: .leading)
+            }.accessibilityIdentifier("onboarding-ready-content")
             HStack {
                 Button(b("Go to the floating window", "前往悬浮窗")) { store.complete(); beginTyping() }
                 Spacer()
@@ -60,7 +52,7 @@ struct OnboardingReadyView: View {
         }.padding(4)
     }
     private var readiness: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             VStack(spacing: 0) {
                 if !store.state.prefersTyping {
                     statusRow(b("Speech transcription", "语音转写"), detail: speechDetail, ready: speechReady, step: .models)
@@ -79,19 +71,21 @@ struct OnboardingReadyView: View {
                     statusRow("Jev Mode", detail: laya.isReady ? b("Local detection ready", "本地判断已就绪") : laya.isBusy ? b("Preparing · manual replies remain available", "准备中 · 仍可手动触发") : laya.isInstalled ? b("Installed · loads when listening starts", "已安装 · 开始监听时加载") : b("Laya needs setup · use manual replies", "Laya 待配置 · 可手动触发"), ready: laya.isReady, step: .models)
                 }
             }.padding(.horizontal, 16).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
-            if OnboardingDownloads.hasPending(coordinator) {
-                HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                if OnboardingDownloads.hasPending(coordinator) {
                     Button(b("Download selected models", "下载所选模型")) { OnboardingDownloads.start(coordinator) }
                         .disabled(coordinator.isMock || coordinator.isRunning || coordinator.isTransitioning || coordinator.isIndexing)
                         .accessibilityIdentifier("onboarding-download-pending")
-                    Text(b("Continue using the app while downloads finish.", "后台下载，进入悬浮窗后会继续。"))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .help(b("Continue using the app while downloads finish.", "后台下载，进入悬浮窗后会继续。"))
                 }
+                if !store.state.prefersTyping {
+                    Button(coordinator.isMock ? b("Try sample captions", "体验示例字幕") : b("Start listening", "开始监听")) { store.complete(); beginListening() }
+                        .disabled((!coordinator.isMock && (!speechReady || !permissionsReady)) || coordinator.isRunning || coordinator.isTransitioning)
+                        .accessibilityIdentifier("onboarding-start-listening")
+                }
+                Spacer(minLength: 0)
             }
             if !store.state.prefersTyping {
-                Button(coordinator.isMock ? b("Try sample captions", "体验示例字幕") : b("Start listening", "开始监听")) { store.complete(); beginListening() }
-                    .disabled((!coordinator.isMock && (!speechReady || !permissionsReady)) || coordinator.isRunning || coordinator.isTransitioning)
-                    .accessibilityIdentifier("onboarding-start-listening")
                 Text(coordinator.isMock ? b("Shows sample captions without recording or connecting to a service.", "显示示例字幕，不录音，也不连接真实服务。") : coordinator.settings.listeningService.isLocal
                      ? b("Starts real audio capture. If Jev Mode is on, complete questions can trigger paid answer requests.", "点击后开始采集音频；开启 Jev Mode 时，完整问题可能触发付费回答请求。")
                      : b("Starts audio streaming to OpenAI and may incur audio and answer API fees.", "点击后开始将音频发送至 OpenAI，可能产生语音及回答 API 费用。"))
@@ -122,13 +116,13 @@ struct OnboardingReadyView: View {
     private func statusRow(_ title: String, detail: String, ready: Bool, step: OnboardingStep) -> some View {
         HStack(spacing: 10) {
             Image(systemName: ready ? "checkmark.circle.fill" : "circle.dashed").foregroundStyle(ready ? Color.green : Color.secondary)
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 13, weight: .semibold))
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Button(b("Review", "查看")) { store.state.step = step }.buttonStyle(.borderless).font(.caption)
-        }.padding(.vertical, 12)
+        }.padding(.vertical, 7)
     }
 }
 
@@ -142,13 +136,15 @@ private struct OnboardingPracticeView: View {
     @State private var revision = UUID()
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            AnalysisProviderBrand(service: coordinator.settings.reasoningService, model: coordinator.settings.analysisModel)
-                .padding(.bottom, 8)
-            Text(b("Try a question", "试问一句")).font(.headline)
-            TextField(b("How can I introduce an idea clearly?", "怎样清楚地介绍一个方案？"), text: $question)
-                .textFieldStyle(.roundedBorder).disabled(busy).accessibilityIdentifier("onboarding-practice-question")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(b("Try a question", "试问一句")).font(.headline)
+                AnalysisProviderBrand(service: coordinator.settings.reasoningService, model: coordinator.settings.analysisModel, compact: true)
+                Spacer()
+            }
             HStack {
+                TextField(b("How can I introduce an idea clearly?", "怎样清楚地介绍一个方案？"), text: $question)
+                    .textFieldStyle(.roundedBorder).disabled(busy).accessibilityIdentifier("onboarding-practice-question")
                 Button(b("Ask this service", "向此服务提问")) { ask() }
                     .disabled(!coordinator.hasAnswerCredential || busy || coordinator.isTransitioning)
                     .accessibilityIdentifier("onboarding-practice-ask")
@@ -157,14 +153,10 @@ private struct OnboardingPracticeView: View {
             Text(coordinator.isMock ? b("Preview response only. No API call is made.", "仅展示示例回答，不调用 API。") : b("Sends only this question; no history or documents. Uses your service's API allowance.", "仅发送本次问题，不附带历史或资料，会产生所选服务的 API 用量。")).font(.caption).foregroundStyle(.secondary)
             if !answer.isEmpty {
                 OnboardingResponsePager(text: answer, language: coordinator.settings.language)
+                    .frame(height: 170)
                     .accessibilityIdentifier("onboarding-practice-answer")
-            } else {
-                Text(error.isEmpty ? b("Your answer will appear here.", "回答会出现在这里。") : error)
-                    .font(.callout).foregroundStyle(error.isEmpty ? Color.secondary : Color.red)
-                    .lineLimit(6).help(error)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            if !answer.isEmpty && !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).help(error) }
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red).lineLimit(3).help(error) }
         }.onDisappear { cancel() }
     }
     private func cancel() { revision = UUID(); task?.cancel(); task = nil; busy = false }

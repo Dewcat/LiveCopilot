@@ -14,7 +14,9 @@ struct LiveCopilotApp: App {
 /// Observe the settings owner so insertion changes take effect immediately.
 private struct LiveCopilotMenuBar: Scene {
     @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var updates: AppUpdateController
     let delegate: AppDelegate
+    init(coordinator: AppCoordinator, delegate: AppDelegate) { self.coordinator = coordinator; updates = coordinator.updates; self.delegate = delegate }
     private var isInserted: Binding<Bool> {
         Binding(get: { coordinator.settings.showMenuBarIcon }, set: { inserted in
             guard coordinator.settings.showMenuBarIcon != inserted else { return }
@@ -29,14 +31,23 @@ private struct LiveCopilotMenuBar: Scene {
     }
 
     var body: some Scene {
-        MenuBarExtra("LiveCopilot", systemImage: coordinator.isRunning ? "waveform" : "waveform.slash",
-                     isInserted: isInserted) {
+        MenuBarExtra(isInserted: isInserted) {
             MenuContent(coordinator: coordinator, hotkeys: coordinator.hotkeys,
                         openSettings: delegate.openSettings,
                         openHistory: delegate.openHistory,
                         toggleOverlay: delegate.toggleOverlay)
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: coordinator.isRunning ? "waveform" : "waveform.slash")
+                if updates.hasUpdate { Image(systemName: "circle.fill").symbolRenderingMode(.palette).font(.system(size: 6)).foregroundStyle(.blue) }
+            }.accessibilityLabel(updates.hasUpdate ? "LiveCopilot，有可用更新" : "LiveCopilot")
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button(L10n.text("About LiveCopilot", language: coordinator.settings.language)) {
+                    NSApp.orderFrontStandardAboutPanel(options: AppInfo.aboutPanelOptions)
+                }
+            }
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton(updates: coordinator.updates, language: coordinator.settings.language)
             }
@@ -100,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var terminationInProgress = false
     private var readyToTerminate = false
     private var settingsObservation: AnyCancellable?
+    private var updateActivityObservation: AnyCancellable?
     private var onboardingObservation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -111,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.updates.blockingReason = { [weak self] in
             guard let self else { return nil }
             let c = self.coordinator
-            guard c.isRunning || c.isTransitioning || c.isIndexing || c.localModels.downloading != nil || c.laya.isBusy || c.appleSpeech.busy else { return nil }
+            guard c.isRunning || c.isTransitioning || c.suggestion.isLoading || c.isIndexing || c.localModels.downloading != nil || c.laya.isBusy || c.appleSpeech.busy else { return nil }
             return ServiceGuide.text("Finish listening, indexing, or preparing models before checking for updates.",
                                      "请先结束监听、资料索引或模型准备，再检查更新。", c.settings.language)
         }
@@ -120,6 +132,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await self.coordinator.shutdown()
             self.coordinator.saveSession()
             self.readyToTerminate = true
+        }
+        coordinator.updates.openManagement = { [weak self] in self?.openSettings() }
+        updateActivityObservation = Publishers.MergeMany([
+            coordinator.objectWillChange.eraseToAnyPublisher(),
+            coordinator.suggestion.objectWillChange.eraseToAnyPublisher(),
+            coordinator.localModels.objectWillChange.eraseToAnyPublisher(),
+            coordinator.appleSpeech.objectWillChange.eraseToAnyPublisher(),
+            coordinator.laya.objectWillChange.eraseToAnyPublisher()
+        ]).sink { [weak self] in
+            DispatchQueue.main.async { self?.coordinator.updates.activityDidChange() }
         }
         coordinator.updates.start()
         if AppPaths.isOnboardingPreview && ProcessInfo.processInfo.arguments.contains("--onboarding-dark") {
@@ -185,7 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyAppearance(to: window, background: settings.background)
             if !(window is OverlayWindow) { window.sharingType = .readOnly }
         }
-        let preview = coordinator.isMock && ProcessInfo.processInfo.arguments.contains("--ui-preview")
+        let preview = coordinator.isMock && (AppPaths.isOnboardingPreview || ProcessInfo.processInfo.arguments.contains("--ui-preview"))
         overlay?.setCaptureExcluded(settings.excludeOverlayFromCapture && !preview)
         overlay?.configure(autoHeight: settings.overlayAutoHeight, edgeHide: settings.overlayEdgeHide)
         if let menu = NSApp.mainMenu { localizeMenu(menu, language: settings.language) }

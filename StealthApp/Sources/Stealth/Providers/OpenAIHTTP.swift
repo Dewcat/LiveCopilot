@@ -17,7 +17,15 @@ struct URLSessionTransport: HTTPTransport {
             let task = Task {
                 do {
                     let (bytes, response) = try await session.bytes(for: request)
-                    try OpenAIHTTP.check((response as? HTTPURLResponse)?.statusCode ?? 0)
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    if !(200..<300).contains(status) {
+                        var errorData = Data()
+                        for try await byte in bytes {
+                            errorData.append(byte)
+                            if errorData.count >= 8192 { break }
+                        }
+                        try OpenAIHTTP.check(status, data: errorData)
+                    }
                     var framer = StreamingLines()
                     for try await byte in bytes {
                         if let line = try framer.consume(byte) {
@@ -45,19 +53,10 @@ enum OpenAIHTTP {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
-    static func check(_ status: Int) throws {
-        guard (200..<300).contains(status) else {
-            let message: String
-            switch status {
-            case 401, 403: message = "Service authentication/access failed (\(status)). Check the API key and model access in Services."
-            case 429: message = "Service rate or credit limit reached. Check API billing/limits and retry later."
-            case 400, 404, 422: message = "Service rejected the request (\(status)). Check model name and supported configuration."
-            case 500...599: message = "Service is temporarily unavailable (\(status)). Retry shortly."
-            default: message = "Service request failed (HTTP \(status)). Check the network and retry."
-            }
-            throw CopilotError.message(message)
-        }
+    static func check(_ status: Int, data: Data? = nil) throws {
+        guard (200..<300).contains(status) else { throw ServiceHTTPFailure(status: status, data: data) }
     }
+
 }
 
 struct OpenAIEmbeddingProvider: EmbeddingProvider {
@@ -135,15 +134,23 @@ struct OpenAIReasoningProvider: ReasoningProvider {
     let key: String
     let model: String
     var effort = "low"
+    var processing = AnalysisProcessing.standard
     var transport: any HTTPTransport = URLSessionTransport()
+    func httpRequest(_ request: AnswerRequest) throws -> URLRequest {
+        var body: [String: Any] = ["model": model, "instructions": request.instructions,
+            "input": request.input, "stream": true, "store": false, "max_output_tokens": 2800]
+        let mode = AnalysisModelCatalog.normalized(effort, model: model, service: .separateOpenAI)
+        if mode != .modelDefault { body["reasoning"] = ["effort": mode.referenceKey] }
+        // Explicit Standard when unchecked; an account-level Fast default must
+        // not silently change the price shown by the application.
+        body["service_tier"] = processing.wireValue
+        return try OpenAIHTTP.request(path: "responses", key: key, body: body)
+    }
     func stream(_ request: AnswerRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    var body: [String: Any] = ["model": model, "instructions": request.instructions,
-                        "input": request.input, "stream": true, "store": false, "max_output_tokens": 2800]
-                    if !effort.isEmpty { body["reasoning"] = ["effort": effort] }
-                    let http = try OpenAIHTTP.request(path: "responses", key: key, body: body)
+                    let http = try httpRequest(request)
                     var parser = ServerSentEvents(), completed = false, hadText = false
                     var reportedService = false, reportedReasoning = false
                     func handle(_ payload: String) async throws {

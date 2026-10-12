@@ -3,6 +3,7 @@
 set -euo pipefail
 [[ $# -eq 1 ]] || { echo 'Usage: finalize-release.sh /path/LiveCopilot-VERSION-macOS-universal.dmg' >&2; exit 1; }
 DMG="$1"
+python3 "$(dirname "$0")/release-version.py" --check-dmg "$DMG"
 NAME="$(basename "$DMG")"
 VERSION="${NAME#LiveCopilot-}"
 VERSION="${VERSION%-macOS-universal.dmg}"

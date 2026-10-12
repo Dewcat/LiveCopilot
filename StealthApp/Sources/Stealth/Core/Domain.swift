@@ -28,10 +28,11 @@ struct AppSettings: Codable, Equatable {
     var appleSpeechLanguage = AppleSpeechLanguage.chinese
     var embeddingService = EmbeddingService.openAI
     var liveModel = "gpt-live-1"
-    static let defaultReasoningModel = "gpt-6.1-sol"
+    static let defaultReasoningModel = AnalysisModelCatalog.recommended(for: .separateOpenAI)!.id
     var reasoningModel = defaultReasoningModel
     var embeddingModel = "text-embedding-3-small"
     var reasoningEffort = "low"
+    var openAIProcessing = AnalysisProcessing.standard
     var mode = OperatingMode.remote
     var scenario = ScenarioProfile.interview
     var automaticSuggestions = true
@@ -54,8 +55,8 @@ struct AppSettings: Codable, Equatable {
     var qwenConnection = AnalysisConnection.qwen
     var glmConnection = AnalysisConnection.glm
     var kimiConnection = AnalysisConnection.kimi
-    var deepSeekModel = "deepseek-flash"
-    var deepSeekEffort = "low"
+    var deepSeekModel = AnalysisModelCatalog.recommended(for: .deepSeek)!.id
+    var deepSeekEffort = "none"
     var compatibleBaseURL = ""
     var compatiblePath = "chat/completions"
     var compatibleModel = ""
@@ -80,7 +81,7 @@ struct AppSettings: Codable, Equatable {
         case recapEnabled, followUpEnabled
         case transcriptFontSize, answerFontSize, qwenConnection, glmConnection, kimiConnection
         case listeningService, liveSpeechLanguage, appleSpeechLanguage, embeddingService, overlayAutoHeight, overlayEdgeHide
-        case liveModel, reasoningModel, embeddingModel, reasoningEffort, mode, scenario, automaticSuggestions, includeConversation, retrievalCount, language, background, excludeOverlayFromCapture, reasoningService, deepSeekModel, deepSeekEffort, compatibleBaseURL, compatiblePath, compatibleModel
+        case liveModel, reasoningModel, embeddingModel, reasoningEffort, openAIProcessing, mode, scenario, automaticSuggestions, includeConversation, retrievalCount, language, background, excludeOverlayFromCapture, reasoningService, deepSeekModel, deepSeekEffort, compatibleBaseURL, compatiblePath, compatibleModel
     }
     init(from decoder: Decoder) throws {
         self.init()
@@ -95,6 +96,7 @@ struct AppSettings: Codable, Equatable {
         reasoningModel = try c.decodeIfPresent(String.self, forKey: .reasoningModel) ?? reasoningModel
         embeddingModel = try c.decodeIfPresent(String.self, forKey: .embeddingModel) ?? embeddingModel
         reasoningEffort = try c.decodeIfPresent(String.self, forKey: .reasoningEffort) ?? reasoningEffort
+        openAIProcessing = try c.decodeIfPresent(AnalysisProcessing.self, forKey: .openAIProcessing) ?? .standard
         mode = try c.decodeIfPresent(OperatingMode.self, forKey: .mode) ?? mode
         scenario = try c.decodeIfPresent(ScenarioProfile.self, forKey: .scenario) ?? scenario
         automaticSuggestions = try c.decodeIfPresent(Bool.self, forKey: .automaticSuggestions) ?? automaticSuggestions

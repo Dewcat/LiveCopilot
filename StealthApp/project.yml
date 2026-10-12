@@ -4,10 +4,11 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+configFiles:
+  Debug: Version.xcconfig
+  Release: Version.xcconfig
 settings:
   base:
-    MARKETING_VERSION: "2.2.0"
-    CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
@@ -30,6 +31,9 @@ targets:
         buildPhase: resources
       - path: Resources/OpenAI-Logomark.svg
         buildPhase: resources
+      - path: Resources/MetricIcons
+        type: folder
+        buildPhase: resources
       - path: Resources/ProviderLogos
         type: folder
         buildPhase: resources
@@ -38,6 +42,8 @@ targets:
         buildPhase: resources
       - path: Resources/LayaRuntime
         type: folder
+        buildPhase: resources
+      - path: Resources/AnalysisConfigurations.json
         buildPhase: resources
       - path: Resources/ThirdPartyNotices.txt
         buildPhase: resources
@@ -52,7 +58,6 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.livecopilot.development
           APP_DISPLAY_NAME: LiveCopilot Dev
-          MARKETING_VERSION: "2.2.0"
         Release:
           ENABLE_HARDENED_RUNTIME: YES
   LiveCopilotTests:
@@ -91,6 +96,7 @@ schemes:
       environmentVariables:
         LIVECOPILOT_MOCK: "1"
         LIVECOPILOT_UI_ACCEPTANCE: "$(LIVECOPILOT_UI_ACCEPTANCE)"
+        LIVECOPILOT_UPDATE_FIXTURE: "$(LIVECOPILOT_UPDATE_FIXTURE)"
         LIVECOPILOT_KEYCHAIN_INTERACTIVE: "$(LIVECOPILOT_KEYCHAIN_INTERACTIVE)"
         LIVECOPILOT_REAL_ANALYSIS: "$(LIVECOPILOT_REAL_ANALYSIS)"
         LIVECOPILOT_LATENCY_COMPARISON: "$(LIVECOPILOT_LATENCY_COMPARISON)"

@@ -71,3 +71,45 @@ actor CredentialVault {
         defaults.set(true, forKey: marker(reference))
     }
 }
+
+/// A local Keychain read is separate from validating a key with its service.
+enum CredentialCheckFeedback: Equatable {
+    case checking, found, missing, authorization, failed
+    static func resolve(checking: Bool, available: Bool, authorization: Bool, status: String) -> Self {
+        if checking { return .checking }
+        if available { return .found }
+        if authorization { return .authorization }
+        return status == "No credential available." ? .missing : .failed
+    }
+    func title(_ language: AppLanguage) -> String {
+        let text: (String, String)
+        switch self {
+        case .checking: text = ("Checking saved key…", "正在检查已保存的密钥…")
+        case .found: text = ("Saved key found", "已找到保存的密钥")
+        case .missing: text = ("No saved key found", "未找到已保存的密钥")
+        case .authorization: text = ("Keychain authorization required", "需要钥匙串授权")
+        case .failed: text = ("Could not read saved key", "密钥读取失败")
+        }
+        return ServiceGuide.text(text.0, text.1, language)
+    }
+    var symbol: String {
+        switch self {
+        case .checking: return "clock"
+        case .found: return "checkmark.circle.fill"
+        case .missing: return "key.horizontal"
+        case .authorization: return "lock.circle"
+        case .failed: return "exclamationmark.triangle"
+        }
+    }
+    func message(_ language: AppLanguage) -> String {
+        let text: (String, String)
+        switch self {
+        case .checking: text = ("Checking this service's saved key…", "正在检查当前服务的已保存密钥…")
+        case .found: text = ("Saved key found. Use Test connection to verify the service; this check made no API request.", "已找到保存的密钥。可点击“测试连接”验证服务；本次检查未发送 API 请求。")
+        case .missing: text = ("No saved key was found for this service. Enter a key above and save it.", "未找到当前服务的已保存密钥，请在上方输入并保存。")
+        case .authorization: text = ("Keychain authorization is required. Check again and approve the macOS authorization dialog.", "需要钥匙串授权，请再次检查并完成 macOS 系统授权。")
+        case .failed: text = ("Could not read the saved key. Check the Keychain status above and try again.", "读取已保存密钥失败，请查看上方钥匙串状态后重试。")
+        }
+        return ServiceGuide.text(text.0, text.1, language)
+    }
+}

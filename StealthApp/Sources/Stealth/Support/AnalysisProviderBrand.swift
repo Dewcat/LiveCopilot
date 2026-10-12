@@ -23,9 +23,9 @@ extension ReasoningService {
     }
 }
 
-struct AnalysisProviderBrand: View {
+struct AnalysisProviderLogo: View {
     let service: ReasoningService
-    let model: String
+    var size: CGFloat = 24
     private static let images: [ReasoningService: NSImage] = Dictionary(uniqueKeysWithValues: ReasoningService.allCases.compactMap { service in
         guard let resource = service.logoResource,
               let url = Bundle.main.resourceURL?.appendingPathComponent(resource),
@@ -33,19 +33,29 @@ struct AnalysisProviderBrand: View {
         return (service, image)
     })
     var body: some View {
-        HStack(spacing: 12) {
-            Group {
-                if let image = Self.images[service] {
-                    Image(nsImage: image).resizable().scaledToFit()
-                } else {
-                    Image(systemName: "network").resizable().scaledToFit().foregroundStyle(.secondary)
+        Group {
+            if let image = Self.images[service] { Image(nsImage: image).resizable().scaledToFit() }
+            else { Image(systemName: "network").resizable().scaledToFit().foregroundStyle(.secondary) }
+        }.frame(width: size, height: size).padding(size / 5)
+            .background(.white, in: RoundedRectangle(cornerRadius: size / 3))
+            .accessibilityHidden(true)
+    }
+}
+
+struct AnalysisProviderBrand: View {
+    let service: ReasoningService
+    let model: String
+    var compact = false
+    var body: some View {
+        HStack(spacing: compact ? 6 : 12) {
+            AnalysisProviderLogo(service: service, size: compact ? 18 : 32)
+            if compact {
+                Text(service.brandName).font(.caption).foregroundStyle(.secondary).help(model)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(service.brandName).font(.title3.weight(.semibold))
+                    Text(model).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(model)
                 }
-            }.frame(width: 32, height: 32).padding(9)
-                .background(.white, in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(service.brandName).font(.title3.weight(.semibold))
-                Text(model).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(model)
             }
         }.accessibilityElement(children: .combine).accessibilityIdentifier("onboarding-practice-provider")
     }

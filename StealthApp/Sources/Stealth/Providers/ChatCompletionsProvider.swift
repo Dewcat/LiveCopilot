@@ -16,9 +16,12 @@ struct ChatCompletionsProvider: ReasoningProvider {
         guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CopilotError.message("Enter an analysis model name in Services.") }
         var body: [String: Any] = ["model": model, "stream": true, "max_tokens": 4096,
             "messages": [["role": "system", "content": answer.instructions], ["role": "user", "content": answer.input]]]
-        if let effort = deepSeekEffort {
-            body["thinking"] = ["type": effort == "none" ? "disabled" : "enabled"]
-            if !effort.isEmpty && effort != "none" { body["reasoning_effort"] = effort }
+        if let requested = deepSeekEffort {
+            let mode = AnalysisModelCatalog.normalized(requested, model: model, service: .deepSeek)
+            if mode != .modelDefault {
+                body["thinking"] = ["type": mode == .disabled ? "disabled" : "enabled"]
+                if let effort = mode.effort { body["reasoning_effort"] = effort }
+            }
         }
         // Do not send another vendor's optional fields or fixed sampling parameters.
         let thinking = service.normalizedThinking(thinking, model: model)
@@ -105,7 +108,7 @@ enum ReasoningProviderFactory {
         guard let key, !key.isEmpty else { throw CopilotError.message("Configure the analysis service API key in Services.") }
         switch settings.reasoningService {
         case .sharedOpenAI, .separateOpenAI:
-            return OpenAIReasoningProvider(key: key, model: settings.reasoningModel, effort: settings.reasoningEffort, transport: transport)
+            return OpenAIReasoningProvider(key: key, model: settings.reasoningModel, effort: settings.reasoningEffort, processing: settings.analysisProcessing, transport: transport)
         case .deepSeek:
             return ChatCompletionsProvider(key: key, model: settings.deepSeekModel, endpoint: URL(string: "https://api.deepseek.com/chat/completions")!, deepSeekEffort: settings.deepSeekEffort, transport: transport)
         case .qwen, .glm, .kimi:

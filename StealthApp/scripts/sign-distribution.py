@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import plistlib
 import subprocess
+import importlib.util
+
+_spec = importlib.util.spec_from_file_location("release_version", Path(__file__).with_name("release-version.py"))
+_version = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_version)
 
 
 def run(*args):
@@ -83,6 +88,7 @@ def main():
         parser.error('Sign in a staging directory; use install-local.py after validation')
     info = plistlib.loads((source / 'Contents/Info.plist').read_bytes())
     assert info['CFBundleIdentifier'] == 'com.livecopilot.app', 'Expected Release bundle ID'
+    _version.validate_app(source, _version.release_version())
     target.parent.mkdir(parents=True, exist_ok=True)
     run('/usr/bin/ditto', '--noextattr', '--norsrc', str(source), str(target))
     info['CFBundleVersion'] = datetime.now(timezone.utc).strftime('%Y%m%d.%H%M%S')

@@ -14,6 +14,7 @@ final class AppCoordinator: ObservableObject {
     private let layaPredictor: ((String, String) async throws -> Double)?
     private let mockReasoning: (any ReasoningProvider)?
     private let mockEmbedding: (any EmbeddingProvider)?
+    private let credentialReader: (@Sendable (CredentialReference, Bool) async throws -> CredentialState)?
     private let emitMockConversation: Bool
     private lazy var layaGate: LayaTriggerController = {
         let gate = LayaTriggerController(predict: { [weak self] text, context in
@@ -45,6 +46,20 @@ final class AppCoordinator: ObservableObject {
     private var localEmbedding: LocalEmbeddingProvider?
     private var retrievalPreparationTask: Task<Void, Never>?
     @Published private(set) var isPreparingRetrieval = false
+    @Published private(set) var retrievalLoadFailed = false
+    @Published private(set) var speechRuntime: CapabilityRuntimeState = .idle
+    private var speechRuntimeService: ListeningService?
+    private var speechRuntimeLanguage: AppleSpeechLanguage?
+    var currentSpeechRuntime: CapabilityRuntimeState {
+        guard speechRuntimeService == settings.listeningService,
+              settings.listeningService != .apple || speechRuntimeLanguage == settings.appleSpeechLanguage else { return .idle }
+        return speechRuntime
+    }
+    var currentKnowledgeRuntime: CapabilityRuntimeState {
+        if isPreparingRetrieval { return .loading }
+        if localEmbedding?.isPrepared == true { return .ready }
+        return retrievalLoadFailed ? .failed : .idle
+    }
     let systemAudio = AudioCaptureManager()
     let mic = MicCaptureManager()
     let isMock: Bool
@@ -111,6 +126,8 @@ final class AppCoordinator: ObservableObject {
     @Published private(set) var answerCredentialRevision = UUID()
     @Published private(set) var verifiedAnalysisSettings: AppSettings?
     private var verifiedCredentialRevision: UUID?
+    @Published private(set) var liveKeyCheckFeedback: CredentialCheckFeedback?
+    @Published private(set) var analysisKeyCheckFeedback: CredentialCheckFeedback?
     @Published var keyStatus = "No credential available."
     @Published var statusMessage = "Ready — type a question or start listening"
     @Published var questionState = QuestionPhase.listening.rawValue
@@ -139,8 +156,10 @@ final class AppCoordinator: ObservableObject {
          layaRoot: URL? = nil, layaPredictor: ((String, String) async throws -> Double)? = nil,
          mockReasoning: (any ReasoningProvider)? = nil,
          emitMockConversation: Bool = true, mockDefaults: UserDefaults? = nil,
-         mockEmbedding: (any EmbeddingProvider)? = nil, mockKnowledgeDirectory: URL? = nil) {
+         mockEmbedding: (any EmbeddingProvider)? = nil, mockKnowledgeDirectory: URL? = nil,
+         credentialReader: (@Sendable (CredentialReference, Bool) async throws -> CredentialState)? = nil) {
         isMock = mock
+        self.credentialReader = mock ? credentialReader : nil
         updates = AppUpdateController(mock: mock)
         self.layaPredictor = mock ? layaPredictor : nil
         self.mockReasoning = mock ? mockReasoning : nil
@@ -268,67 +287,98 @@ final class AppCoordinator: ObservableObject {
         onHotkeysChanged?(); return true
     }
     @discardableResult func resetOverlayHotkey() -> Bool { updateOverlayHotkey(HotkeyStore.defaultToggleOverlay) }
-    func refreshKeyState(interactive: Bool = false) {
-        if isMock { hasAPIKey = true; return }
-        guard !isCheckingKey else { return }
+    @discardableResult func refreshKeyState(interactive: Bool = false) -> Task<Void, Never>? {
+        guard !isCheckingKey else { return nil }
+        liveKeyCheckFeedback = interactive ? .checking : nil
+        if isMock && credentialReader == nil {
+            hasAPIKey = true
+            if interactive { liveKeyCheckFeedback = .found }
+            return nil
+        }
         answerCredentialRevision = UUID()
         isCheckingKey = true
-        cachedKey = nil; hasAPIKey = false
-        keyNeedsAuthorization = false
+        if !interactive { cachedKey = nil; hasAPIKey = false; keyNeedsAuthorization = false }
         keyStatus = "Checking Keychain…"
         let revision = UUID(); credentialRevision = revision
-        Task {
+        return Task {
             defer { if credentialRevision == revision { isCheckingKey = false } }
             do {
                 // A locked Keychain or its access prompt must never freeze the native UI.
-                let result = try await CredentialVault.shared.read(.live, interactive: interactive)
+                let result = try await readCredential(.live, interactive: interactive)
                 let key = result.key
                 guard credentialRevision == revision else { return }
                 cachedKey = key; hasAPIKey = key != nil
                 DebugLog.log("credential.ready role=live available=\(hasAPIKey)")
                 keyNeedsAuthorization = result.needsAuthorization
                 keyStatus = result.message
+                if interactive { liveKeyCheckFeedback = .resolve(checking: false, available: hasAPIKey, authorization: keyNeedsAuthorization, status: keyStatus) }
                 if key == nil { statusMessage = result.needsAuthorization ? result.message : "No key available — open Settings to configure Keychain." }
-                if let key { runStartupCheckIfRequested(key: key) }
+                if let key, !interactive { runStartupCheckIfRequested(key: key) }
             } catch {
                 guard credentialRevision == revision else { return }
                 cachedKey = nil; hasAPIKey = false; statusMessage = error.localizedDescription
                 keyStatus = error.localizedDescription
+                if interactive { liveKeyCheckFeedback = .failed }
             }
         }
     }
-    func refreshAnalysisKeyState(interactive: Bool = false) {
+    @discardableResult func refreshAnalysisKeyState(interactive: Bool = false) -> Task<Void, Never>? {
+        analysisKeyCheckFeedback = interactive ? .checking : nil
         answerCredentialRevision = UUID()
         let revision = UUID(); analysisCredentialRevision = revision
-        cachedAnalysisKey = nil; hasAnalysisKey = false; isCheckingAnalysisKey = false; analysisKeyNeedsAuthorization = false
-        guard settings.reasoningService != .sharedOpenAI else { analysisKeyStatus = "Using the Live service credential."; return }
-        guard !isMock else { hasAnalysisKey = true; analysisKeyStatus = "Mock providers — no credential needed."; return }
+        if !interactive { cachedAnalysisKey = nil; hasAnalysisKey = false; analysisKeyNeedsAuthorization = false }
+        isCheckingAnalysisKey = false
+        guard settings.reasoningService != .sharedOpenAI else {
+            analysisKeyStatus = "Using the Live service credential."
+            analysisKeyCheckFeedback = nil
+            return interactive ? refreshKeyState(interactive: true) : nil
+        }
+        guard !isMock || credentialReader != nil else {
+            hasAnalysisKey = true; analysisKeyStatus = "Mock providers — no credential needed."
+            if interactive { analysisKeyCheckFeedback = .found }
+            return nil
+        }
         do {
             let reference = try settings.analysisCredentialReference()
             analysisCredentialReference = reference
             isCheckingAnalysisKey = true
             analysisKeyStatus = "Checking Keychain…"
-            Task {
+            return Task {
                 defer { if analysisCredentialRevision == revision { isCheckingAnalysisKey = false } }
                 do {
-                    let result = try await CredentialVault.shared.read(reference, interactive: interactive)
+                    let result = try await readCredential(reference, interactive: interactive)
                     let key = result.key
                     guard analysisCredentialRevision == revision else { return }
                     cachedAnalysisKey = key; hasAnalysisKey = key != nil
                     DebugLog.log("credential.ready role=analysis available=\(hasAnalysisKey)")
                     analysisKeyNeedsAuthorization = result.needsAuthorization
                     analysisKeyStatus = result.message
+                    if interactive { analysisKeyCheckFeedback = .resolve(checking: false, available: hasAnalysisKey, authorization: analysisKeyNeedsAuthorization, status: analysisKeyStatus) }
                 } catch {
                     guard analysisCredentialRevision == revision else { return }
+                    cachedAnalysisKey = nil; hasAnalysisKey = false
                     analysisKeyStatus = error.localizedDescription
+                    if interactive { analysisKeyCheckFeedback = .failed }
                 }
             }
-        } catch { analysisKeyStatus = error.localizedDescription }
+        } catch {
+            analysisKeyStatus = error.localizedDescription
+            if interactive { analysisKeyCheckFeedback = .failed }
+            return nil
+        }
+    }
+    private func readCredential(_ reference: CredentialReference, interactive: Bool) async throws -> CredentialState {
+        if let credentialReader { return try await credentialReader(reference, interactive) }
+        return try await CredentialVault.shared.read(reference, interactive: interactive)
+    }
+    func clearCredentialCheckFeedback(analysis: Bool) {
+        if analysis { analysisKeyCheckFeedback = nil } else { liveKeyCheckFeedback = nil }
     }
     func saveCredential(_ value: String, analysis: Bool) async throws {
         guard !isMock else { return }
         let reference = analysis ? try settings.analysisCredentialReference() : .live
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        clearCredentialCheckFeedback(analysis: analysis)
         try await CredentialVault.shared.save(value, for: reference)
         answerCredentialRevision = UUID()
         if reference == .live {
@@ -346,6 +396,7 @@ final class AppCoordinator: ObservableObject {
             settings.analysisModel == verifiedAnalysisSettings.analysisModel &&
             (try? settings.analysisCredentialReference()) == (try? verifiedAnalysisSettings.analysisCredentialReference()) &&
             settings.reasoningEffort == verifiedAnalysisSettings.reasoningEffort &&
+            settings.analysisProcessing == verifiedAnalysisSettings.analysisProcessing &&
             settings.deepSeekEffort == verifiedAnalysisSettings.deepSeekEffort &&
             settings.presetConnection == verifiedAnalysisSettings.presetConnection
     }
@@ -415,6 +466,7 @@ final class AppCoordinator: ObservableObject {
             retrievalPreparationTask?.cancel()
             localEmbedding?.close(); localEmbedding = nil
         }
+        if kind == .embedding { retrievalLoadFailed = false }
         localModels.remove(kind)
     }
 
@@ -435,7 +487,7 @@ final class AppCoordinator: ObservableObject {
               let provider = (try? embeddingProvider(requireReady: true)) as? any LocalEmbeddingPreparing,
               knowledgeDocuments.contains(where: { $0.chunkCount > 0 && $0.embeddingModel == provider.model }),
               !provider.isPrepared else { return }
-        isPreparingRetrieval = true
+        isPreparingRetrieval = true; retrievalLoadFailed = false
         retrievalPreparationTask = Task { [weak self] in
             let started = ProcessInfo.processInfo.systemUptime
             defer { self?.isPreparingRetrieval = false; self?.retrievalPreparationTask = nil }
@@ -443,13 +495,14 @@ final class AppCoordinator: ObservableObject {
                 try await provider.prepare()
                 DebugLog.log("retrieval.prepare ready elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - started) * 1000))")
             } catch {
+                self?.retrievalLoadFailed = !Task.isCancelled
                 // Retrieval retains its existing keyword fallback. Do not interrupt listening.
                 DebugLog.log("retrieval.prepare \(Task.isCancelled ? "cancelled" : "failed")")
             }
         }
     }
     func start() async {
-        guard !isRunning, !isTransitioning, !isShuttingDown else { return }
+        guard !isRunning, !isTransitioning, !isShuttingDown, !updates.installationCommitted else { return }
         isTransitioning = true; defer { isTransitioning = false }
         prepareLocalRetrieval()
         invalidateAutomaticTrigger(releaseRuntime: false)
@@ -507,6 +560,9 @@ final class AppCoordinator: ObservableObject {
         } else if let kind = settings.listeningService.localModel {
             provider = LocalLiveProvider(directory: kind.location(in: localModels.root), speaker: speaker, sessionStart: sessionStartedAt ?? Date())
         } else { provider = OpenAILiveProvider(key: key, model: settings.liveModel, speaker: speaker, scenario: settings.scenario, language: settings.liveSpeechLanguage) }
+        speechRuntimeService = settings.listeningService
+        speechRuntimeLanguage = settings.appleSpeechLanguage
+        speechRuntime = .loading
         provider.onEvent = { [weak self] event in self?.receive(event, speaker: speaker, epoch: epoch) }
         return provider
     }
@@ -534,9 +590,10 @@ final class AppCoordinator: ObservableObject {
             if activeDelegations.count > 400 { activeDelegations = [id] }
             pendingAutomatic = (speaker, id, Date().addingTimeInterval(25))
             scheduleAutomatic()
-        case .ready: statusMessage = "Listening · \(settings.mode.rawValue) · \(speaker.rawValue) ready"
+        case .ready: speechRuntime = .ready; statusMessage = "Listening · \(settings.mode.rawValue) · \(speaker.rawValue) ready"
         case .status(let message): statusMessage = message
         case .failed(let message):
+            speechRuntime = .failed
             layaGate.reset()
             transcript.clearPartial(speaker)
             statusMessage = message
@@ -544,6 +601,7 @@ final class AppCoordinator: ObservableObject {
                 Task { await stop(); statusMessage = message }
             }
         case .closed(let finalized):
+            if speechRuntime != .failed { speechRuntime = .idle }
             speakingSources.remove(speaker)
             layaGate.reset()
             configureAutomaticTrigger(prepare: false)

@@ -20,6 +20,26 @@ private final class CaptureSharingPanel: NSPanel {
 }
 
 final class NativeTests: XCTestCase {
+    @MainActor func testAutomaticDockingDefaultsOnAndCanBeDisabledPersistently() throws {
+        let suite = "LiveCopilot-Docking-Tests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var settings = AppSettings.load(defaults: defaults)
+        XCTAssertTrue(settings.overlayEdgeHide)
+        settings.overlayEdgeHide = false; settings.save(defaults: defaults)
+        XCTAssertFalse(AppSettings.load(defaults: defaults).overlayEdgeHide)
+        let window = OverlayWindow(rootView: Text("Drag test"))
+        defer { window.close() }
+        window.setCaptureExcluded(false)
+        window.configure(autoHeight: false, edgeHide: true)
+        XCTAssertFalse(window.isMovableByWindowBackground)
+        window.configure(autoHeight: false, edgeHide: false)
+        XCTAssertTrue(window.isMovableByWindowBackground)
+        window.setFrameOrigin(NSPoint(x: 200, y: 250))
+        window.configure(autoHeight: false, edgeHide: false)
+        XCTAssertEqual(window.frame.origin, NSPoint(x: 200, y: 250), "An ordinary configuration refresh must preserve the freely positioned window")
+    }
+
     @MainActor func testProtectedOverlayUsesArrowWithoutChangingOtherWindowsOrResizeCursors() {
         let window = NSPanel(contentRect: NSRect(x: 40, y: 40, width: 200, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.hidesOnDeactivate = false

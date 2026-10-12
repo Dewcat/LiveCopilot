@@ -7,9 +7,13 @@ Private EdDSA keys stay in Keychain. Start a server on 127.0.0.1:18746 to run th
 from pathlib import Path
 import plistlib
 import subprocess
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
-QA = ROOT / 'build/updater-qa'
+parser = argparse.ArgumentParser()
+parser.add_argument('--output', type=Path, default=ROOT / 'build/updater-qa')
+args = parser.parse_args()
+QA = args.output.resolve()
 TOOLS = ROOT / 'build/SparkleTools/bin'
 SOURCE = ROOT / 'build/Build/Products/Debug/LiveCopilot.app'
 
@@ -26,6 +30,7 @@ for kind, version in [('installed', '100'), ('candidate', '101')]:
     path = app / 'Contents/Info.plist'
     info = plistlib.loads(path.read_bytes())
     info.update(CFBundleIdentifier='com.livecopilot.updater-qa', CFBundleVersion=version,
+                CFBundleShortVersionString='2.2.0' if kind == 'installed' else '2.2.1',
                 CFBundleName='LiveCopilot Update QA', CFBundleDisplayName='LiveCopilot Update QA',
                 LiveCopilotOnboardingPreview=True,
                 LiveCopilotUpdaterTestFeed='http://127.0.0.1:18746/appcast.xml',

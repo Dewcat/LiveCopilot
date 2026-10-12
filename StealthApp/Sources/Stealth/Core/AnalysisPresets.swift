@@ -29,36 +29,29 @@ struct AnalysisConnection: Codable, Equatable {
     var model: String
     var thinking = AnalysisThinking.modelDefault
     func endpoint() throws -> URL { try ServiceEndpoint.make(baseURL: baseURL, path: "chat/completions") }
-    static let qwen = Self(baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.8-flash", thinking: .low)
-    static let glm = Self(baseURL: "https://open.bigmodel.cn/api/paas/v4", model: "glm-5.3-flash", thinking: .low)
-    static let kimi = Self(baseURL: "https://api.moonshot.cn/v1", model: "kimi-k2.6", thinking: .disabled)
+    static let qwen = recommended(.qwen, baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    static let glm = recommended(.glm, baseURL: "https://open.bigmodel.cn/api/paas/v4")
+    static let kimi = recommended(.kimi, baseURL: "https://api.moonshot.cn/v1")
+    private static func recommended(_ service: ReasoningService, baseURL: String) -> Self {
+        let model = AnalysisModelCatalog.recommended(for: service)!
+        return .init(baseURL: baseURL, model: model.id, thinking: model.recommendedThinking)
+    }
 }
 
 extension ReasoningService {
     var isPreset: Bool { self == .qwen || self == .glm || self == .kimi }
     func availableThinkingModes(for model: String) -> [AnalysisThinking] {
-        let name = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if self == .qwen && ["qwen3.8-flash", "qwen3.8-max", "qwen3.8-max-0902", "qwen3.8-27b", "qwen3.8-omni-flash"].contains(name) {
-            return [.low, .medium, .xhigh, .disabled, .modelDefault, .enabled]
-        }
-        if self == .qwen && name == "qwen3.8-2.4t-a95b" { return [.low, .medium, .xhigh, .modelDefault, .enabled] }
-        if self == .glm && ["glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"].contains(name) {
-            return [.low, .high, .max, .modelDefault, .enabled]
-        }
-        if self == .kimi && name == "kimi-k3" { return [.low, .high, .max, .modelDefault] }
-        return [.modelDefault, .disabled, .enabled]
+        AnalysisModelCatalog.model(model, service: self)?.modes ?? [.modelDefault]
     }
     func defaultThinking(for model: String) -> AnalysisThinking {
-        if availableThinkingModes(for: model).contains(.low) { return .low }
-        if self == .kimi && ["kimi-k2.6"].contains(model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) { return .disabled }
-        return .modelDefault
+        AnalysisModelCatalog.model(model, service: self)?.recommendedThinking ?? .modelDefault
     }
     func normalizedThinking(_ thinking: AnalysisThinking, model: String) -> AnalysisThinking {
-        availableThinkingModes(for: model).contains(thinking) ? thinking : .modelDefault
+        AnalysisModelCatalog.normalized(thinking, model: model, service: self)
     }
     var pricingURL: String? {
         switch self {
-        case .sharedOpenAI, .separateOpenAI: return "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
+        case .sharedOpenAI, .separateOpenAI: return "https://developers.openai.com/api/docs/models"
         case .deepSeek: return "https://api-docs.deepseek.com/quick_start/pricing/"
         case .qwen: return "https://help.aliyun.com/zh/model-studio/model-pricing"
         case .glm: return "https://bigmodel.cn/pricing"
@@ -80,8 +73,7 @@ extension AppSettings {
     /// Explicit UI selection only: loading saved preferences must preserve the user's effort.
     mutating func selectAnalysisService(_ service: ReasoningService) {
         guard reasoningService != service else { return }
-        reasoningService = service
-        resetAnalysisEffort()
+        reasoningService = service // Per-provider model and effort are already persisted independently.
     }
     mutating func selectAnalysisModel(_ model: String) {
         guard analysisModel != model else { return }
@@ -94,14 +86,7 @@ extension AppSettings {
         resetAnalysisEffort()
     }
     private mutating func resetAnalysisEffort() {
-        switch reasoningService {
-        case .sharedOpenAI, .separateOpenAI: reasoningEffort = "low"
-        case .deepSeek: deepSeekEffort = "low"
-        case .qwen, .glm, .kimi:
-            let thinking = reasoningService.defaultThinking(for: analysisModel)
-            presetConnection?.thinking = thinking
-        case .compatible: break // The custom endpoint's capabilities are unknown.
-        }
+        analysisThinking = reasoningService.defaultThinking(for: analysisModel)
     }
     var presetConnection: AnalysisConnection? {
         get {
