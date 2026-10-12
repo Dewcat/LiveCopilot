@@ -6,6 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LiveCopilot</title>
         <item>
+            <title>2.3.0</title>
+            <pubDate>Mon, 12 Oct 2026 22:08:00 +0800</pubDate>
+            <link>https://carey-bk.github.io/LiveCopilot/</link>
+            <sparkle:version>20261012.115413</sparkle:version>
+            <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>LiveCopilot v2.3.0</h2><ul><li>**更简单的首次配置**：按语音语言和知识库需求推荐本地能力，展示真实准备状态及下载资源，支持先用现有能力开始使用。</li><li>**更清晰的模型选择**：新增推荐模型配置、推理深度与处理模式选择，集中展示延迟、生成速度和价格参考；估算数据明确标注。</li><li>**更顺畅的密钥配置**：可直接配置语音 OpenAI 密钥，已保存密钥检查提供明确反馈，连接测试区分常见失败原因。</li><li>**更及时的更新提醒**：主窗口提醒、菜单栏入口和设置页统一管理更新，实时使用期间不打扰；版本号统一为三段式。</li><li>**更自由的悬浮窗**：默认保持自动贴边，也可关闭自动贴边后自由拖动到桌面任意位置。</li><li>Guided setup recommends local capabilities by language and knowledge-base needs, with clear readiness/download status and a quick-start option.</li><li>Model recommendations, reasoning and processing controls, latency, throughput and pricing references are presented together. Estimates remain labeled.</li><li>Speech-key setup, saved-key checks and connection-test feedback are clearer.</li><li>Unified update reminders in the main window, menu and settings stay quiet during live use, with semantic version comparison.</li><li>Turn off automatic edge docking to freely position the floating window.</li></ul>]]></description>
+            <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.3.0/LiveCopilot-2.3.0-macOS-universal.dmg" length="36865154" type="application/octet-stream" sparkle:edSignature="mopo1B9YTVat+VfxXYtCleKh4YJ2Lvq24LCyLpWCdRb36jGwe2TDGg2iEvmEBtRkhzCT3PyDzHeflbmc5Z9QBA=="/>
+        </item>
+        <item>
             <title>2.2.0</title>
             <pubDate>Sat, 10 Oct 2026 20:45:12 +0800</pubDate>
             <link>https://carey-bk.github.io/LiveCopilot/</link>
@@ -56,6 +66,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: AslTO6XjkiL+Inodegcz3x1EOSbvNL9VMxkY+IMV3NoZdoimUEZATG/j8i0EBqGU3694+WSuVv5guO6AiSLXCA==
-length: 6345
+edSignature: NG5jK2htLxB3kUnUR8OvxNPL0FucjTQHuc0Qc9bOxW7BmrdqOOWMRnojQ+0ukW5/BGQTjBvI7OSIk831tKr3Bw==
+length: 8566
 -->
