@@ -732,7 +732,7 @@ private struct LocalModelCard: View {
                 if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty { Text(t(manager.message)).font(.caption).foregroundStyle(.secondary) }
             }
             if let report = manager.health[kind] {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
                     Button(copiedDiagnostics ? (language == .english ? "Copied" : "已复制") : (language == .english ? "Copy diagnostics" : "复制诊断信息")) {
                         NSPasteboard.general.clearContents()
                         copiedDiagnostics = NSPasteboard.general.setString(report.diagnostic(kind: kind), forType: .string)

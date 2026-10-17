@@ -45,7 +45,7 @@ struct AppSettings: Codable, Equatable {
     var recapEnabled = true
     var followUpEnabled = true
     var includeConversation = true
-    var retrievalCount = 6
+    var retrievalCount = 5
     var knowledgeMode = KnowledgeMode.hybrid
     var answerLanguage = AnswerLanguage.auto
     var language = AppLanguage.system
