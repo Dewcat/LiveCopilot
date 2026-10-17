@@ -28,7 +28,7 @@ struct AppleSpeechCard: View {
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(manager.installed && !manager.busy ? Color.green.opacity(0.1) : Color.secondary.opacity(0.08), in: Capsule())
             }
-            Label(b("Only the selected language is recognized; automatic Chinese/English switching is not supported. Use Paraformer for mixed-language speech.", "当前仅识别所选语言，不支持自动切换中英文。混合语言场景建议使用 Paraformer。"), systemImage: "info.circle")
+            Label(b("Only the selected language is recognized; automatic Chinese/English switching is not supported. Use Zipformer for mixed-language speech.", "当前仅识别所选语言，不支持自动切换中英文。混合语言场景建议使用 Zipformer。"), systemImage: "info.circle")
                 .font(.callout).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text(b("Models are managed by macOS. No API Key or speech recognition API fees are required.", "模型由 macOS 管理，无需 API Key，不产生语音识别 API 费用。"))

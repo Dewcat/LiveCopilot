@@ -242,8 +242,8 @@ struct SettingsView: View {
             liveSection(b("Speech recognition engine", "语音识别引擎")) {
                 HStack(spacing: 20) {
                     Picker(b("Engine", "当前引擎"), selection: $coordinator.settings.listeningService) {
-                        Text("Zipformer · " + b("Terminology", "术语增强")).tag(ListeningService.zipformer)
-                        Text("Paraformer").tag(ListeningService.paraformer)
+                        Text(b("Zipformer · Local Chinese + English · Terminology", "Zipformer · 本地中英双语 · 术语增强")).tag(ListeningService.zipformer)
+                        Text(b("Paraformer · Local Chinese + English", "Paraformer · 本地中英双语")).tag(ListeningService.paraformer)
                         Text(b("Apple local speech recognition", "Apple 本机语音识别")).tag(ListeningService.apple)
                         Text("OpenAI · GPT-Live-1").tag(ListeningService.openAI)
                     }.disabled(locked).accessibilityIdentifier("listening-provider")

@@ -184,8 +184,8 @@ struct OnboardingModelsView: View {
             Picker(b("Speech service", "识别方式"), selection: Binding(get: { coordinator.settings.listeningService }, set: {
                 OnboardingRecommendation.selectSpeech($0, coordinator: coordinator)
             })) {
-                Text("Zipformer · " + b("Terminology", "术语增强")).tag(ListeningService.zipformer)
-                Text(b("Paraformer · Chinese + English", "Paraformer · 本地中英双语")).tag(ListeningService.paraformer)
+                Text(b("Zipformer · Local Chinese + English · Terminology", "Zipformer · 本地中英双语 · 术语增强")).tag(ListeningService.zipformer)
+                Text(b("Paraformer · Local Chinese + English", "Paraformer · 本地中英双语")).tag(ListeningService.paraformer)
                 Text(b("Apple · one language, on-device", "Apple · 本机单语言")).tag(ListeningService.apple).disabled(!apple.available)
                 Text(b("OpenAI · cloud audio", "OpenAI · 云端识别")).tag(ListeningService.openAI)
             }.disabled(!editable).accessibilityIdentifier("onboarding-speech-provider")

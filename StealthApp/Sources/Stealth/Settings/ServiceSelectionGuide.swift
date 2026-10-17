@@ -7,8 +7,8 @@ struct SpeechSelectionGuide: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(b("Choose for your conversation", "按对话语言选择")).font(.callout.weight(.medium))
-            Text(b("Chinese/English mixed or switching often: Paraformer. Runs on this Mac with no speech API fee.",
-                   "中英混说或频繁切换：Paraformer。本机处理，无语音 API 费用。"))
+            Text(b("Chinese/English mixed or switching often: Zipformer is recommended. Runs locally with terminology enhancement and no speech API fee.",
+                   "中英混说或频繁切换：推荐 Zipformer。本机处理，支持术语增强，无语音 API 费用。"))
             Text(b("Mostly Mandarin or mostly English: Apple. Select that language before listening; it does not switch automatically.",
                    "主要说普通话或英语：Apple。开始前选择对应识别语言，不会自动切换。"))
             Text(b("More languages: OpenAI cloud. Requires internet; audio is uploaded and billed by usage.",

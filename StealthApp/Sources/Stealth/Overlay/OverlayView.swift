@@ -33,6 +33,9 @@ struct OverlayView: View {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 10) {
                     top.frame(height: 120, alignment: .top)
+                    if let step = onboarding.visibleTip {
+                        OverlayFirstUseTip(step: step, coordinator: coordinator)
+                    }
                     transcriptView.frame(height: 90)
                     Divider()
                     actions.frame(height: 28)
@@ -117,9 +120,6 @@ struct OverlayView: View {
                         .font(.caption)
                 }.fixedSize().help(t("Answer language"))
                     .accessibilityIdentifier("answer-language")
-            }
-            if onboarding.visibleTip == .answer {
-                OverlayFirstUseTip(step: .answer, coordinator: coordinator)
             }
         }
     }
