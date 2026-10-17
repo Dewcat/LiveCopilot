@@ -6,6 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LiveCopilot</title>
         <item>
+            <title>2.5.0</title>
+            <pubDate>Sun, 18 Oct 2026 00:26:48 +0800</pubDate>
+            <link>https://carey-bk.github.io/LiveCopilot/</link>
+            <sparkle:version>20261017.161727</sparkle:version>
+            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>LiveCopilot 2.5.0</h2><ul><li>完整会话历史：多轮问答、引用、搜索、导出和自动命名；支持手动重命名。</li><li>本地模型真实加载自检、诊断信息及明确恢复指引。</li><li>推荐 Zipformer 中英双语识别；新版微调 Laya 从引导页下载，安装包不包含模型权重。</li><li>悬浮窗和设置布局优化；保留现有配置、凭证、模型与历史。</li></ul><p>Laya 本地运行需要 Apple Silicon。模型下载约 767 MB，需额外磁盘空间。</p><h3>English</h3><ul><li>Searchable multi-turn session history with citations, export, automatic titles and rename controls.</li><li>Real local-model loading checks, diagnostics and recovery guidance.</li><li>Recommended Zipformer bilingual speech recognition. Download the pinned fine-tuned Laya model during setup; no Laya weights in the small installer.</li><li>Refined native settings and floating window; existing settings, credentials, models and history are preserved.</li></ul><p>Local Laya requires Apple Silicon. Model setup downloads approximately 767 MB and requires additional disk space.</p>]]></description>
+            <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.5.0/LiveCopilot-2.5.0-macOS-universal.dmg" length="37980349" type="application/octet-stream" sparkle:edSignature="HN4H97hZN+LFqx8fYlsQNnA/50wiiZ7wRgeZrFKvKY/LzU5OSFBT9sBkh5b79tU65fAGXrr8Qj8RfE1vSkfoCw=="/>
+        </item>
+        <item>
             <title>2.3.0</title>
             <pubDate>Mon, 12 Oct 2026 22:08:00 +0800</pubDate>
             <link>https://carey-bk.github.io/LiveCopilot/</link>
@@ -43,29 +53,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 ]]></description>
             <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.2.0/LiveCopilot-2.2.0-macOS-universal.dmg" length="36008959" type="application/octet-stream" sparkle:edSignature="qkCH2Oue+6OqykDXr1bYW5XepW9bTgpgD5Dq9kF3YGfDb7Z7ZQj02+R2AXbeSDbEEaEL45Z7b/7Zuiu3K6yVDQ=="/>
         </item>
-        <item>
-            <title>2.1.0</title>
-            <pubDate>Tue, 29 Sep 2026 23:08:05 +0800</pubDate>
-            <link>https://carey-bk.github.io/LiveCopilot/</link>
-            <sparkle:version>20260929.144323</sparkle:version>
-            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>LiveCopilot 2.1.0</h2>
-<p>新增六步首次使用引导、右对齐小尺寸开关和应用内更新。安装盘新增拖动提示与清晰的大、小图标；完成引导后自动展开悬浮窗，并支持隐藏菜单栏图标。可从设置 → 关于检查更新，自动检查可选，下载与安装由你确认。</p>
-<p>更新保留模型、资料、历史、偏好和 API Key。应用与 DMG 均使用 Developer ID 签名并通过 Apple 公证。</p>
-<p>知识库索引使用整批文档的真实总进度，显示连续进度条、百分比和完成数量；文档行仅显示加载状态。</p>
-<p>设置中的引导入口并排展示；本地模型步骤明确使用“下载并继续”，后续步骤可查看下载状态。排队模型显示等待下载，最后一步可补充下载尚未准备的所选模型。</p>
-<hr>
-<p>A six-step first-run guide, compact right-aligned switches, and signed in-app updates. The installer now has a drag-to-install layout; finishing setup opens the floating window, and menu bar visibility is configurable. Check for updates in Settings → About. Automatic checks are optional; you approve downloads and installation.</p>
-<p>Your models, documents, history, preferences, and API keys are preserved. Both the app and DMG are Developer ID signed and Apple notarized.</p>
-<p>Knowledge indexing now shows one continuous batch progress bar with a percentage and completed-document count. Individual documents use a loading indicator.</p>
-<p>Guide buttons now share one row. The model step explicitly says “Download &amp; continue”, subsequent steps expose download status, queued models are labeled correctly, and the final readiness page can start any pending selected downloads.</p>
-]]></description>
-            <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.1.0/LiveCopilot-2.1.0-macOS-universal.dmg" length="35629484" type="application/octet-stream" sparkle:edSignature="W4xBtxVCFQD8Vs+JzNkHQMQLFC/HagIMIgHo2xKRYoSTFWHUlSjKzKsX8hwUueJ2VdZElXCndDynVlDt5FElBw=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: NG5jK2htLxB3kUnUR8OvxNPL0FucjTQHuc0Qc9bOxW7BmrdqOOWMRnojQ+0ukW5/BGQTjBvI7OSIk831tKr3Bw==
-length: 8566
+edSignature: x0+nRMl2TRWGLEHtGy52RabdILLBg/DRj5b+7YqxOwZjacJr51axlRuP0UICtUElyJqTWH/jAooQMNwlWCCDAQ==
+length: 7955
 -->
