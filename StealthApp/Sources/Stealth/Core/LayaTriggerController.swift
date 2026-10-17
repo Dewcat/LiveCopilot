@@ -1,38 +1,23 @@
 import Foundation
 
-/// Local ASR often omits terminal punctuation. Restore only an explicit
-/// question cue for Laya's classifier input; the transcript and answer query
-/// retain the exact recognized words.
-enum LayaPredictionText {
-    static func normalized(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              !"?？!！.。".contains(trimmed.last!),
-              !trimmed.hasPrefix("他") || !trimmed.contains("问我"),
-              !trimmed.hasPrefix("她") || !trimmed.contains("问我"),
-              LocalQuestionDetector.isQuestion(trimmed) else { return text }
-        let chinese = trimmed.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
-        return trimmed + (chinese ? "？" : "?")
+/// Semantic eligibility comes only from Laya. Text rules do not override its score.
+/// Final ASR, silence, cooldown, speaker and lifecycle guards remain in the controller.
+enum LayaTriggerDecision: String, Sendable {
+    case belowThreshold, threshold
+    var shouldTrigger: Bool { self == .threshold }
+    static func evaluate(score: Double, threshold: Double) -> Self {
+        guard score.isFinite, (0...1).contains(score), threshold.isFinite else { return .belowThreshold }
+        return score >= threshold ? .threshold : .belowThreshold
     }
+}
 
-    /// ASR may omit punctuation between two Chinese questions. Score the full
-    /// utterance and a bounded first question with Laya; never shorten the text
-    /// sent to the answer model. No rule alone can dispatch an answer here.
-    static func variants(_ text: String) -> [String] {
-        let full = normalized(text)
-        guard LocalQuestionDetector.isQuestion(text) else { return [full] }
-        var results = [full]
-        for connector in ["它的", "他的", "她的", "它们的", "他们的"] {
-            guard let range = text.range(of: connector),
-                  text.distance(from: text.startIndex, to: range.lowerBound) >= 8 else { continue }
-            let first = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard LocalQuestionDetector.isQuestion(first) else { continue }
-            let variant = normalized(first)
-            if variant != full { results.append(variant) }
-            break
-        }
-        return results
-    }
+struct LayaDiagnosticResult: Sendable {
+    let score: Double
+    let threshold: Double
+    let decision: LayaTriggerDecision
+    /// Preparation and local prediction/IPC are measured separately. Neither is full trigger latency.
+    let preparationMS: Double
+    let predictionMS: Double
 }
 
 struct LayaTriggerInput: Equatable, Sendable {
@@ -41,6 +26,7 @@ struct LayaTriggerInput: Equatable, Sendable {
     let speaker: Speaker
     let isFinal: Bool
     var trace: PipelineTrace? = nil
+    var answerContext: String? = nil
 }
 
 /// Scores revisions as they arrive, but only dispatches a committed, quiet turn.
@@ -64,7 +50,6 @@ struct LayaTriggerInput: Equatable, Sendable {
 
     var onError: ((String) -> Void)?
     var onDecision: ((Double) -> Void)?
-    var onExplicitConfirmation: ((Bool) -> Void)?
     var onTrace: ((PipelineTrace, PipelineTrace.Stage) -> Void)?
 
     private struct Candidate {
@@ -88,8 +73,6 @@ struct LayaTriggerInput: Equatable, Sendable {
     private let predict: (String, String) async throws -> Double
     private let onTrigger: (LayaTriggerInput) -> Bool
     private let timing: Timing
-    private let ruleNearMissMargin: Double
-    private let allowExplicitQuestions: Bool
     private var enabled = false
     private var threshold = 0.8
     private var cooldown: TimeInterval = 7
@@ -113,12 +96,10 @@ struct LayaTriggerInput: Equatable, Sendable {
     /// Timing is injectable for regression checks; ordinary callers use the two closures.
     init(predict: @escaping (String, String) async throws -> Double,
          onTrigger: @escaping (LayaTriggerInput) -> Bool,
-         timing: Timing = Timing(), ruleNearMissMargin: Double = 0, allowExplicitQuestions: Bool = false) {
+         timing: Timing = Timing()) {
         self.predict = predict
         self.onTrigger = onTrigger
         self.timing = timing
-        self.allowExplicitQuestions = allowExplicitQuestions
-        self.ruleNearMissMargin = max(0, min(0.2, ruleNearMissMargin))
     }
 
     deinit {
@@ -153,8 +134,26 @@ struct LayaTriggerInput: Equatable, Sendable {
 
         let now = Self.now
         if var current = candidate, current.key == key {
-            // Duplicate finals (including changed context or punctuation) cannot renew
-            // the quiet window/expiry, downgrade a final, or repeat its prediction.
+            if current.input.isFinal && !input.isFinal { return }
+            // Reuse a score only for the same semantic input. A context revision
+            // invalidates an in-flight result without renewing the candidate's lifetime.
+            if current.input.context != input.context || current.input.speaker != input.speaker {
+                nextID &+= 1
+                candidate = Candidate(id: nextID, key: key, input: input,
+                                      expiresAt: current.expiresAt,
+                                      finalAt: current.finalAt ?? (input.isFinal ? now : nil),
+                                      deferred: current.deferred, trace: current.trace)
+                if input.isFinal && !current.input.isFinal {
+                    candidate?.trace.mark(.asrStable, at: now)
+                    if let trace = candidate?.trace { onTrace?(trace, .asrStable) }
+                    lastActivityAt = now
+                }
+                dispatchTask?.cancel(); dispatchTask = nil
+                scheduleExpiry()
+                startPredictionIfNeeded()
+                return
+            }
+            // Duplicate finals/punctuation cannot renew the quiet window or expiry.
             if current.input.isFinal { return }
             if current.input.speaker == input.speaker {
                 guard input.isFinal else { return }
@@ -355,7 +354,6 @@ struct LayaTriggerInput: Equatable, Sendable {
             candidate?.trace.mark(.jevEnd)
             if let trace = candidate?.trace { onTrace?(trace, .jevEnd) }
             onDecision?(score)
-            onExplicitConfirmation?(allowExplicitQuestions && candidate.map { QuestionCompleteness.explicitDirectQuestion($0.input.text) } == true && score < threshold)
             attemptDispatch()
         case .success:
             onError?("Laya returned an invalid confidence; automatic suggestion skipped.")
@@ -376,15 +374,11 @@ struct LayaTriggerInput: Equatable, Sendable {
               let current = candidate, current.input.speaker != .you,
               current.input.isFinal, let finalAt = current.finalAt,
               let score = current.score,
-              !QuestionCompleteness.mustWait(current.input.text),
-              (score >= threshold ||
-               (allowExplicitQuestions && QuestionCompleteness.explicitDirectQuestion(current.input.text)) ||
-               (ruleNearMissMargin > 0 && score >= threshold - ruleNearMissMargin &&
-                LocalQuestionDetector.isQuestion(current.input.text))),
+              LayaTriggerDecision.evaluate(score: score, threshold: threshold).shouldTrigger,
               !current.deferred, !handled.contains(current.key) else { return }
-        // A final ASR segment already includes endpoint silence. High-confidence
-        // complete questions need only a short revision guard, not another full pause.
-        let fast = (score >= max(0.9, threshold) || (allowExplicitQuestions && QuestionCompleteness.explicitDirectQuestion(current.input.text))) && QuestionCompleteness.permitsFastDispatch(current.input.text)
+        // A final ASR segment already includes endpoint silence. Requests with a
+        // high response-needed score need only a short revision guard.
+        let fast = score >= max(0.9, threshold)
         let quiet = fast ? min(timing.quiet, 0.15) : timing.quiet
         let interval = fast ? min(cooldown, 0.75) : cooldown
         let due = max(max(finalAt, lastActivityAt) + quiet,

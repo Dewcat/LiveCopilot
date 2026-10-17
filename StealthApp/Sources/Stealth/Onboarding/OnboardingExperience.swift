@@ -38,8 +38,8 @@ enum OnboardingSpeechScenario: String, Codable, CaseIterable, Identifiable {
     }
     func engine(appleAvailable: Bool) -> ListeningService {
         switch self {
-        case .mixedInterview: return .paraformer
-        case .singleLanguage: return appleAvailable ? .apple : .paraformer
+        case .mixedInterview: return .zipformer
+        case .singleLanguage: return appleAvailable ? .apple : .zipformer
         case .multilingualMeeting: return .openAI
         }
     }
@@ -59,7 +59,7 @@ struct OnboardingRecommendation: Equatable {
         self.speechScenario = speechScenario
         self.wantsKnowledge = wantsKnowledge ?? (scenario != .meeting)
         // Keep the legacy initializer's behavior for callers outside the scenario picker.
-        speech = speechScenario?.engine(appleAvailable: appleReady) ?? (appleReady ? .apple : .paraformer)
+        speech = speechScenario?.engine(appleAvailable: appleReady) ?? .zipformer
     }
     func applyingSpeech(to settings: AppSettings) -> AppSettings {
         var result = settings

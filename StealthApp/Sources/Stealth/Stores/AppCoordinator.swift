@@ -4,8 +4,81 @@ import Combine
 @MainActor
 final class AppCoordinator: ObservableObject {
     let transcript = TranscriptStore()
-    let suggestion = SuggestionStore()
-    let sessions = SessionStore()
+    let suggestion = SuggestionStore() // Stable display projection; requests own separate stores.
+    struct AnswerRecord: Identifiable {
+        let id: UUID
+        let questionID: UUID
+        let automatic: Bool
+        let createdAt: Date
+        let store: SuggestionStore
+        var viewed: Bool
+    }
+    @Published private(set) var answerRevision = 0
+    @Published private(set) var answers: [AnswerRecord] = []
+    @Published private(set) var selectedAnswerID: UUID?
+    @Published private(set) var answerIsRunning = false
+    @Published private(set) var queuedQuestionCount = 0
+    @Published private(set) var skippedQuestionCount = 0
+    private var questions = QuestionCoordinator()
+    private var queueWake: Task<Void, Never>?
+    private var answerTimeout: Task<Void, Never>?
+    private var activeStore: SuggestionStore?
+    var answerTimeoutSeconds: Double = 90
+    var unreadAnswerCount: Int { answers.filter { !$0.viewed }.count }
+    var previousAnswerID: UUID? {
+        guard let index = answers.firstIndex(where: { $0.id == selectedAnswerID }), index > 0 else { return nil }
+        return answers[index - 1].id
+    }
+    func selectAnswer(_ id: UUID) {
+        guard let index = answers.firstIndex(where: { $0.id == id }) else { return }
+        selectedAnswerID = id; answers[index].viewed = true
+        suggestion.copy(from: answers[index].store)
+    }
+    func showNextAnswer() {
+        if let next = answers.first(where: { !$0.viewed }) { selectAnswer(next.id) }
+        else if let index = answers.firstIndex(where: { $0.id == selectedAnswerID }), index + 1 < answers.count { selectAnswer(answers[index + 1].id) }
+    }
+    private func publishAnswer(_ id: UUID, store: SuggestionStore) {
+        if selectedAnswerID == id { suggestion.copy(from: store) }
+        answerRevision &+= 1
+    }
+    private func syncQueuedAnswers() {
+        let ids = Set(questions.pending.map(\.answerID))
+        for record in answers where record.store.state == .queued && !ids.contains(record.id) {
+            record.store.interrupt(ServiceGuide.text("Merged or skipped before generation.", "已合并或跳过，未发起生成。", settings.language))
+        }
+        for item in questions.pending {
+            if let existing = answers.first(where: { $0.id == item.answerID }) {
+                existing.store.prepare(question: item.query)
+            } else {
+                let store = SuggestionStore(); store.prepare(question: item.query)
+                answers.append(AnswerRecord(id: item.answerID, questionID: item.id, automatic: true,
+                                            createdAt: item.receivedAt, store: store, viewed: false))
+            }
+        }
+        answerRevision &+= 1
+    }
+    private func drainQuestions() {
+        queueWake?.cancel(); queueWake = nil
+        guard !answerIsRunning, isRunning, settings.automaticSuggestions, !isShuttingDown, speakingSources.isEmpty else { return }
+        if let item = questions.take() {
+            queuedQuestionCount = questions.pending.count; skippedQuestionCount = questions.droppedCount
+            request(query: item.query, mode: .reply, speaker: item.speaker, delegationID: item.delegationID,
+                    automatic: true, contextOverride: item.context, pipelineTrace: item.trace, scheduled: item)
+            syncQueuedAnswers()
+        } else {
+            syncQueuedAnswers()
+            queuedQuestionCount = questions.pending.count; skippedQuestionCount = questions.droppedCount
+            if let next = questions.pending.first {
+                let delay = max(0.01, next.readyAt.timeIntervalSinceNow)
+                queueWake = Task { [weak self] in
+                    do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
+                    self?.drainQuestions()
+                }
+            }
+        }
+    }
+    let sessions: SessionStore
     let hotkeys: HotkeyStore
     let localModels: LocalModelManager
     let onboarding: OnboardingStore
@@ -19,26 +92,13 @@ final class AppCoordinator: ObservableObject {
     private lazy var layaGate: LayaTriggerController = {
         let gate = LayaTriggerController(predict: { [weak self] text, context in
             guard let self else { throw CancellationError() }
-            var highest = 0.0
-            for variant in LayaPredictionText.variants(text) {
-                try Task.checkCancellation()
-                let score: Double
-                if let predict = self.layaPredictor { score = try await predict(variant, context) }
-                else { score = try await self.laya.predict(text: variant, context: context) }
-                guard score.isFinite, (0...1).contains(score) else {
-                    throw CopilotError.message("Laya returned an invalid confidence.")
-                }
-                highest = max(highest, score)
-                if highest >= self.settings.layaThreshold { break }
-            }
-            return highest
-        }, onTrigger: { [weak self] input in self?.dispatchLaya(input) ?? true }, ruleNearMissMargin: 0.1, allowExplicitQuestions: true)
+            return try await self.scoreLayaText(text, context: context)
+        }, onTrigger: { [weak self] input in self?.dispatchLaya(input) ?? true })
         gate.onError = { [weak self] _ in
             guard let self else { return }
             self.statusMessage = ServiceGuide.text("Laya unavailable — manual generation remains available. Check Live services settings.", "Laya 暂不可用，仍可手动生成回答。请检查“实时服务”设置。", self.settings.language)
         }
         gate.onDecision = { [weak self] score in self?.layaLastScore = score }
-        gate.onExplicitConfirmation = { [weak self] used in self?.layaExplicitConfirmation = used }
         gate.onTrace = { trace, stage in DebugLog.log(trace.logLine(stage)) }
         return gate
     }()
@@ -91,15 +151,21 @@ final class AppCoordinator: ObservableObject {
     @Published var settings = AppSettings() {
         didSet {
             settings.save(defaults: settingsDefaults)
+            if oldValue.professionalTerms != settings.professionalTerms || oldValue.professionalTermsEnabled != settings.professionalTermsEnabled {
+                let terms = activeProfessionalTerms
+                (systemLive as? LocalLiveProvider)?.updateTerms(terms)
+                (micLive as? LocalLiveProvider)?.updateTerms(terms)
+            }
             if oldValue.automaticSuggestions != settings.automaticSuggestions ||
                 oldValue.scenario != settings.scenario ||
                 oldValue.mode != settings.mode || oldValue.listeningService != settings.listeningService {
+                questions.clear(); queueWake?.cancel(); queuedQuestionCount = 0
                 invalidateAutomaticTrigger()
                 configureAutomaticTrigger()
             } else if oldValue.layaThreshold != settings.layaThreshold {
                 configureAutomaticTrigger(prepare: false)
             }
-            if suggestion.isLoading && !settings.isEnabled(suggestion.mode) { cancelAnswer() }
+            if answerIsRunning && !settings.isEnabled(activeStore?.mode ?? suggestion.mode) { cancelAnswer() }
             if oldValue.requiresOpenAIKey != settings.requiresOpenAIKey {
                 if settings.requiresOpenAIKey { refreshKeyState() }
                 else {
@@ -111,11 +177,18 @@ final class AppCoordinator: ObservableObject {
                 (try? oldValue.analysisCredentialReference()) != (try? settings.analysisCredentialReference()) {
                 refreshAnalysisKeyState()
             }
-            if oldValue.embeddingService != settings.embeddingService { prepareLocalRetrieval() }
+            if oldValue.embeddingService != settings.embeddingService || oldValue.embeddingModel != settings.embeddingModel {
+                embeddingVerificationEpoch = UUID(); embeddingVerificationTask?.cancel(); embeddingVerificationTask = nil
+                embeddingVerification = .idle
+                prepareLocalRetrieval()
+            }
         }
     }
     @Published var isRunning = false
     @Published var isTransitioning = false
+    @Published private(set) var embeddingVerification: ServiceVerification = .idle
+    private var embeddingVerificationTask: Task<Void, Never>?
+    private var embeddingVerificationEpoch = UUID()
     @Published var hasAPIKey = false
     @Published var isCheckingKey = false
     @Published var keyNeedsAuthorization = false
@@ -132,7 +205,6 @@ final class AppCoordinator: ObservableObject {
     @Published var statusMessage = "Ready — type a question or start listening"
     @Published var questionState = QuestionPhase.listening.rawValue
     @Published private(set) var layaLastScore: Double?
-    @Published private(set) var layaExplicitConfirmation = false
     @Published var knowledgeDocuments: [KnowledgeDocument] = []
     @Published var isIndexing = false
     @Published private(set) var indexingProgress = 0.0
@@ -159,6 +231,7 @@ final class AppCoordinator: ObservableObject {
          mockEmbedding: (any EmbeddingProvider)? = nil, mockKnowledgeDirectory: URL? = nil,
          credentialReader: (@Sendable (CredentialReference, Bool) async throws -> CredentialState)? = nil) {
         isMock = mock
+        sessions = SessionStore(root: AppPaths.dataDirectory(mock: mock).appendingPathComponent("sessions", isDirectory: true))
         self.credentialReader = mock ? credentialReader : nil
         updates = AppUpdateController(mock: mock)
         self.layaPredictor = mock ? layaPredictor : nil
@@ -173,11 +246,12 @@ final class AppCoordinator: ObservableObject {
         hotkeys = HotkeyStore(defaults: settingsDefaults)
         settings = AppSettings.load(defaults: settingsDefaults)
         if onboarding.isNewInstall && (!mock || preview) {
-            settings.listeningService = .paraformer
+            settings.listeningService = .zipformer
             settings.embeddingService = .local
             settings.reasoningService = .separateOpenAI
             settings.automaticSuggestions = laya.state != .unsupported
             settings.save(defaults: settingsDefaults)
+
         }
         do { knowledge = try KnowledgeIndex(directory: (mock ? mockKnowledgeDirectory : nil) ?? AppPaths.dataDirectory(mock: mock).appendingPathComponent("knowledge")) }
         catch { knowledgeMessage = error.localizedDescription }
@@ -220,23 +294,54 @@ final class AppCoordinator: ObservableObject {
     /// Local transcribers use Laya; GPT-Live-1 owns its client delegation decisions.
     private var usesLaya: Bool { settings.listeningService.isLocal }
     private func invalidateAutomaticTrigger(releaseRuntime: Bool = true) {
+        questions.clear(); syncQueuedAnswers(); queueWake?.cancel(); queuedQuestionCount = 0; skippedQuestionCount = 0
         questionTask?.cancel(); questionTask = nil; pendingAutomatic = nil
-        layaLastScore = nil; layaExplicitConfirmation = false
+        layaLastScore = nil
         layaGate.reset()
         if releaseRuntime { laya.stop() }
     }
     private func configureAutomaticTrigger(prepare: Bool = true) {
         let selected = isRunning && settings.automaticSuggestions && usesLaya && !isShuttingDown
         layaGate.configure(enabled: selected && (laya.isReady || layaPredictor != nil),
-                           threshold: settings.layaThreshold, cooldown: settings.scenario.cooldown)
+                           threshold: settings.layaThreshold, cooldown: 0.75)
         if selected {
             for speaker in speakingSources { layaGate.setSpeaking(true, speaker: speaker) }
             if prepare && layaPredictor == nil && !laya.isReady && !laya.isBusy { laya.prepare() }
         }
     }
     private func manualIntervention() {
+        questions.clear(); syncQueuedAnswers(); queueWake?.cancel(); queuedQuestionCount = 0; skippedQuestionCount = 0
         pendingAutomatic = nil; questionTask?.cancel(); questionTask = nil
         layaGate.manualIntervention()
+    }
+    /// Shares live scoring, but never enters the live gate or calls a reasoning provider.
+    func testLayaTrigger(text: String) async throws -> LayaDiagnosticResult {
+        guard !isRunning, !isTransitioning, !isShuttingDown, !isTestingLaya else { throw LayaRuntimeError.unavailable }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.utf8.count <= 65536 else { throw LayaRuntimeError.invalidInput }
+        isTestingLaya = true
+        defer { isTestingLaya = false }
+        let threshold = settings.layaThreshold
+        let start = ProcessInfo.processInfo.systemUptime
+        if layaPredictor == nil { try await laya.prepareAndWait() }
+        let prepared = ProcessInfo.processInfo.systemUptime
+        let score = try await scoreLayaText(text, context: "")
+        try Task.checkCancellation()
+        return LayaDiagnosticResult(score: score, threshold: threshold,
+                                    decision: .evaluate(score: score, threshold: threshold),
+                                    preparationMS: (prepared - start) * 1000,
+                                    predictionMS: (ProcessInfo.processInfo.systemUptime - prepared) * 1000)
+    }
+    @Published private(set) var isTestingLaya = false
+    private func scoreLayaText(_ text: String, context: String) async throws -> Double {
+        try Task.checkCancellation()
+        let score: Double
+        if let predict = layaPredictor { score = try await predict(text, context) }
+        else { score = try await laya.predict(text: text, context: context) }
+        guard score.isFinite, (0...1).contains(score) else {
+            throw CopilotError.message("Laya returned an invalid confidence.")
+        }
+        return score
     }
     func cancelLayaRuntime() {
         invalidateAutomaticTrigger(releaseRuntime: false)
@@ -259,15 +364,15 @@ final class AppCoordinator: ObservableObject {
                                       startMS: offset, endMS: offset, receivedAt: now))
         }
         guard let text = snapshot.candidate(speaker: speaker, now: Date(), cooldown: 0, force: partial != nil, semanticDetection: true) else { return }
-        layaGate.submit(.init(text: text, context: snapshot.context(), speaker: speaker, isFinal: partial == nil))
+        layaGate.submit(.init(text: text, context: snapshot.layaContext(speaker: speaker, now: Date(), force: partial != nil),
+                              speaker: speaker, isFinal: partial == nil, answerContext: snapshot.context()))
     }
     private func dispatchLaya(_ input: LayaTriggerInput) -> Bool {
         guard isRunning, !isTransitioning, !isShuttingDown, usesLaya, settings.automaticSuggestions else { return true }
-        guard !suggestion.isLoading else { return false }
         guard let candidate = conversation.candidate(speaker: input.speaker, now: Date(), cooldown: 0, semanticDetection: true),
               candidate == input.text else { return true }
         // No fabricated OpenAI tool-call ID: Laya is an independent automatic origin.
-        request(query: candidate, mode: .reply, speaker: input.speaker, automatic: true, contextOverride: input.context, pipelineTrace: input.trace)
+        request(query: candidate, mode: .reply, speaker: input.speaker, automatic: true, contextOverride: input.answerContext ?? conversation.context(), pipelineTrace: input.trace)
         return true
     }
     /// Deterministic audio-free input for the existing mock mode and native integration tests.
@@ -307,6 +412,9 @@ final class AppCoordinator: ObservableObject {
                 let result = try await readCredential(.live, interactive: interactive)
                 let key = result.key
                 guard credentialRevision == revision else { return }
+                if cachedKey != key {
+                    embeddingVerificationEpoch = UUID(); embeddingVerificationTask?.cancel(); embeddingVerificationTask = nil; embeddingVerification = .idle
+                }
                 cachedKey = key; hasAPIKey = key != nil
                 DebugLog.log("credential.ready role=live available=\(hasAPIKey)")
                 keyNeedsAuthorization = result.needsAuthorization
@@ -384,6 +492,8 @@ final class AppCoordinator: ObservableObject {
         if reference == .live {
             credentialRevision = UUID(); isCheckingKey = false
             cachedKey = value; hasAPIKey = true; keyNeedsAuthorization = false; keyStatus = "Saved in macOS Keychain."
+            embeddingVerificationEpoch = UUID(); embeddingVerificationTask?.cancel(); embeddingVerificationTask = nil; embeddingVerification = .idle
+            if settings.embeddingService == .openAI { Task { await self.verifyEmbeddingIfNeeded() } }
         } else if (try? settings.analysisCredentialReference()) == reference {
             analysisCredentialRevision = UUID(); isCheckingAnalysisKey = false
             cachedAnalysisKey = value; hasAnalysisKey = true; analysisKeyNeedsAuthorization = false; analysisKeyStatus = "Saved in macOS Keychain."
@@ -399,6 +509,65 @@ final class AppCoordinator: ObservableObject {
             settings.analysisProcessing == verifiedAnalysisSettings.analysisProcessing &&
             settings.deepSeekEffort == verifiedAnalysisSettings.deepSeekEffort &&
             settings.presetConnection == verifiedAnalysisSettings.presetConnection
+    }
+
+    var isKnowledgeServiceVerified: Bool {
+        settings.embeddingService == .local ? localModels.embeddingVerification.isReady : hasAPIKey && embeddingVerification.isReady
+    }
+    var knowledgeNeedsReindex: Bool {
+        knowledgeDocuments.contains { $0.embeddingModel != settings.selectedEmbeddingIdentity }
+    }
+    func verifyEmbeddingIfNeeded() async {
+        if settings.embeddingService == .local { await localModels.verifyEmbeddingIfNeeded() }
+        else if hasAPIKey && embeddingVerification == .idle { try? await testEmbeddingConnection() }
+    }
+    /// Uses fixed text only. Existing documents and indexes are not modified.
+    func testEmbeddingConnection() async throws {
+        if let embeddingVerificationTask {
+            await embeddingVerificationTask.value
+            try Task.checkCancellation()
+            if case .failed(let message) = embeddingVerification { throw CopilotError.message(message) }
+            guard embeddingVerification.isReady else { throw CancellationError() }
+            return
+        }
+        let model = settings.embeddingModel, savedKey = cachedKey
+        let key = isMock ? "mock" : try credential()
+        let epoch = UUID(); embeddingVerificationEpoch = epoch
+        embeddingVerification = .checking
+        let operation = Task { @MainActor in
+            do {
+                let provider: any EmbeddingProvider = isMock ? (mockEmbedding ?? MockEmbeddingProvider()) : OpenAIEmbeddingProvider(key: key, model: model)
+                try await EmbeddingConnectionProbe.run(provider: provider)
+                try Task.checkCancellation()
+                guard epoch == embeddingVerificationEpoch, cachedKey == savedKey, model == settings.embeddingModel, settings.embeddingService == .openAI else { return }
+                embeddingVerification = .ready
+            } catch {
+                guard !Task.isCancelled, epoch == embeddingVerificationEpoch, cachedKey == savedKey, model == settings.embeddingModel, settings.embeddingService == .openAI else { return }
+                embeddingVerification = .failed(error.localizedDescription)
+            }
+        }
+        embeddingVerificationTask = operation
+        await withTaskCancellationHandler { await operation.value } onCancel: { operation.cancel() }
+        // A cancelled/replaced test must not reset a newer task or publish success.
+        guard epoch == embeddingVerificationEpoch, cachedKey == savedKey, model == settings.embeddingModel else { throw CancellationError() }
+        embeddingVerificationTask = nil
+        if Task.isCancelled { embeddingVerification = .idle; throw CancellationError() }
+        if case .failed(let message) = embeddingVerification { throw CopilotError.message(message) }
+    }
+
+    /// Explicit connection check; never captures or transmits microphone/system audio.
+    func testLiveConnection() async throws {
+        guard !isRunning, !isMock else {
+            throw CopilotError.message("Stop listening before testing the speech connection.")
+        }
+        let testedSettings = settings, revision = credentialRevision
+        let provider = OpenAILiveProvider(key: try credential(), model: testedSettings.liveModel,
+            speaker: .them, scenario: testedSettings.scenario, language: testedSettings.liveSpeechLanguage)
+        try await LiveConnectionProbe.run(provider: provider)
+        try Task.checkCancellation()
+        guard revision == credentialRevision, settings.liveModel == testedSettings.liveModel else {
+            throw CopilotError.message("Speech configuration changed. Test the connection again.")
+        }
     }
 
     /// Only invoked by the explicit onboarding test button; never includes user data.
@@ -427,7 +596,7 @@ final class AppCoordinator: ObservableObject {
         let reference = analysis ? try settings.analysisCredentialReference() : .live
         try await CredentialVault.shared.remove(reference)
         answerCredentialRevision = UUID()
-        if reference == .live { credentialRevision = UUID(); isCheckingKey = false; refreshKeyState() }
+        if reference == .live { embeddingVerificationEpoch = UUID(); embeddingVerificationTask?.cancel(); embeddingVerificationTask = nil; embeddingVerification = .idle; credentialRevision = UUID(); isCheckingKey = false; refreshKeyState() }
         else if (try? settings.analysisCredentialReference()) == reference { refreshAnalysisKeyState() }
     }
     private func runStartupCheckIfRequested(key: String) {
@@ -461,7 +630,7 @@ final class AppCoordinator: ObservableObject {
         return key
     }
     func removeLocalModel(_ kind: LocalModelKind) {
-        guard !isRunning, !isTransitioning, !isIndexing, !suggestion.isLoading else { return }
+        guard !isRunning, !isTransitioning, !isIndexing, !answerIsRunning else { return }
         if kind == .embedding {
             retrievalPreparationTask?.cancel()
             localEmbedding?.close(); localEmbedding = nil
@@ -553,12 +722,18 @@ final class AppCoordinator: ObservableObject {
             statusMessage = systemAudio.lastError ?? mic.lastError ?? (settings.listeningService.isLocal ? "Loading local speech model…" : "Connecting Live…")
         } catch { statusMessage = error.localizedDescription; sessionStartedAt = nil }
     }
+    var activeProfessionalTerms: [String] {
+        guard settings.professionalTermsEnabled else { return [] }
+        return ProfessionalTerms.recognitionTerms(settings.professionalTerms,
+            tokensURL: LocalModelKind.terminologySpeech.location(in: localModels.root).appendingPathComponent("tokens.txt"))
+    }
     private func makeLive(key: String, speaker: Speaker, epoch: UUID) -> any LiveProvider {
         let provider: any LiveProvider
         if settings.listeningService == .apple, #available(macOS 26, *) {
             provider = AppleLiveProvider(speaker: speaker, language: settings.appleSpeechLanguage, sessionStart: sessionStartedAt ?? Date())
         } else if let kind = settings.listeningService.localModel {
-            provider = LocalLiveProvider(directory: kind.location(in: localModels.root), speaker: speaker, sessionStart: sessionStartedAt ?? Date())
+            provider = LocalLiveProvider(directory: kind.location(in: localModels.root), speaker: speaker, sessionStart: sessionStartedAt ?? Date(),
+                                         contextual: kind == .terminologySpeech, terms: activeProfessionalTerms)
         } else { provider = OpenAILiveProvider(key: key, model: settings.liveModel, speaker: speaker, scenario: settings.scenario, language: settings.liveSpeechLanguage) }
         speechRuntimeService = settings.listeningService
         speechRuntimeLanguage = settings.appleSpeechLanguage
@@ -573,6 +748,10 @@ final class AppCoordinator: ObservableObject {
             if active { speakingSources.insert(speaker); if pendingAutomatic?.speaker == speaker { questionTask?.cancel() } }
             else { speakingSources.remove(speaker); if pendingAutomatic != nil { scheduleAutomatic() } }
             if usesLaya, isRunning { layaGate.setSpeaking(active, speaker: speaker) }
+            if !active {
+                if settings.continuousQuestionPolicy == .complete { questions.postponeUntilQuiet() }
+                drainQuestions()
+            }
         case .partialTranscript(let text):
             transcript.setPartial(text, speaker: speaker)
             if !text.isEmpty { questionState = QuestionPhase.forming.rawValue }
@@ -620,8 +799,7 @@ final class AppCoordinator: ObservableObject {
                   !self.usesLaya, self.settings.automaticSuggestions, let pending = self.pendingAutomatic else { return }
             if Date() > pending.deadline { self.pendingAutomatic = nil; return }
             if self.speakingSources.contains(pending.speaker) { self.questionState = QuestionPhase.forming.rawValue; return }
-            if self.suggestion.isLoading { return } // Latest follow-up remains queued until answer finishes.
-            guard let question = self.conversation.candidate(speaker: pending.speaker, now: Date(), cooldown: self.settings.scenario.cooldown) else {
+            guard let question = self.conversation.candidate(speaker: pending.speaker, now: Date(), cooldown: 0) else {
                 self.questionState = self.conversation.phase.rawValue
                 if self.conversation.phase == .duplicate || self.conversation.phase == .answered { self.pendingAutomatic = nil }
                 else { self.scheduleAutomatic() }
@@ -632,6 +810,7 @@ final class AppCoordinator: ObservableObject {
         }
     }
     func shutdown() async {
+        embeddingVerificationTask?.cancel(); await embeddingVerificationTask?.value
         isShuttingDown = true
         retrievalPreparationTask?.cancel()
         await retrievalPreparationTask?.value
@@ -666,15 +845,21 @@ final class AppCoordinator: ObservableObject {
     func resetConversation() async {
         guard !isTransitioning, !isShuttingDown else { return }
         let resume = isRunning
+        // Finish and archive stable/final ASR before clearing the visible conversation.
+        if resume { await stop() } else { saveSession() }
+        guard sessionStartedAt == nil || transcript.lines.isEmpty else {
+            statusMessage = sessions.lastError ?? "Session history could not be saved. Check available disk space and permissions."
+            return
+        }
         isTransitioning = true
         liveEpoch = UUID() // Invalidate old callbacks BEFORE disconnect can flush a final segment.
         invalidateAutomaticTrigger()
         cancelAnswer(); answerTask = nil
         questionTask?.cancel(); questionTask = nil; pendingAutomatic = nil
         mockTask?.cancel(); mockTask = nil
-        sessionStartedAt = nil // This session was explicitly discarded, not archived.
+        sessionStartedAt = nil // The completed round was archived above.
         isRunning = false
-        conversation.reset(); transcript.clear(); suggestion.reset()
+        conversation.reset(); transcript.clear(); suggestion.reset(); answers.removeAll(); selectedAnswerID = nil
         activeDelegations = []; speakingSources = []
         questionState = QuestionPhase.listening.rawValue
         settings.overlayAutoHeight = true
@@ -690,7 +875,7 @@ final class AppCoordinator: ObservableObject {
     }
     func saveSession() {
         if let started = sessionStartedAt {
-            _ = sessions.save(lines: transcript.lines, startedAt: started, fragments: conversation.fragments)
+            if !transcript.lines.isEmpty && sessions.save(lines: transcript.lines, startedAt: started, fragments: conversation.fragments) == nil { return }
         }
         sessionStartedAt = nil
     }
@@ -736,32 +921,64 @@ final class AppCoordinator: ObservableObject {
     func askText(_ query: String) { manualIntervention(); request(query: query, mode: .reply, useContext: includeConversation) }
     func cancelAnswer() {
         manualIntervention()
-        suggestion.mark(.cancelled)
-        requestID = UUID(); answerTask?.cancel(); suggestion.finish()
-        conversation.finish(success: false, question: suggestion.question)
+        activeStore?.mark(.cancelled); activeStore?.interrupt()
+        if let store = activeStore { publishAnswer(requestID, store: store) }
+        requestID = UUID(); answerTask?.cancel(); answerTimeout?.cancel(); answerIsRunning = false
+        conversation.finish(success: false, question: activeStore?.question ?? suggestion.question)
+        activeStore = nil
         questionState = conversation.phase.rawValue
     }
     private func request(query: String, mode: SuggestionMode, speaker: Speaker? = nil,
                          delegationID: String? = nil, useContext: Bool = true,
-                         automatic: Bool = false, contextOverride: String? = nil, pipelineTrace: PipelineTrace? = nil, languageQuestion: String? = nil) {
-        if !automatic { manualIntervention() }
+                         automatic: Bool = false, contextOverride: String? = nil, pipelineTrace: PipelineTrace? = nil, languageQuestion: String? = nil, scheduled: QuestionCoordinator.Candidate? = nil) {
+        if automatic && scheduled == nil {
+            questions.enqueue(query: query, context: contextOverride ?? conversation.context(), speaker: speaker,
+                              delegationID: delegationID, trace: pipelineTrace, sourceID: conversation.latestFragmentID(speaker: speaker), policy: settings.continuousQuestionPolicy)
+            conversation.begin(query, speaker: speaker, now: Date())
+            queuedQuestionCount = questions.pending.count; skippedQuestionCount = questions.droppedCount
+            syncQueuedAnswers()
+            drainQuestions()
+            return
+        }
+        if !automatic { cancelAnswer() }
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !isTransitioning, !isShuttingDown else { return }
         guard query.count <= 8000 else { suggestion.fail("Keep a manual question under 8,000 characters."); return }
         let settings = settings, liveKey = cachedKey, analysisKey = cachedAnalysisKey
         let embedding = try? embeddingProvider()
-        if suggestion.isLoading { suggestion.mark(.cancelled) }
-        answerTask?.cancel()
-        let id = UUID(); requestID = id
+        let id = scheduled?.answerID ?? UUID(); requestID = id
+        let output = answers.first(where: { $0.id == id })?.store ?? SuggestionStore()
+        activeStore = output; answerIsRunning = true
+        let show = !automatic || selectedAnswerID == nil
+        if !answers.contains(where: { $0.id == id }) {
+            answers.append(AnswerRecord(id: id, questionID: scheduled?.id ?? UUID(), automatic: automatic,
+                                        createdAt: Date(), store: output, viewed: show))
+        }
+        if show {
+            selectedAnswerID = id
+            if let index = answers.firstIndex(where: { $0.id == id }) { answers[index].viewed = true }
+        }
         let context = useContext ? (contextOverride ?? conversation.context()) : ""
-        let previous = useContext ? conversation.previousQuestion : nil
+        let previous = useContext && conversation.previousQuestion != query ? conversation.previousQuestion : nil
         let normalized = RetrievalQuery.formulate(question: query, context: context, previousQuestion: previous)
-        conversation.begin(query, speaker: speaker, now: Date())
+        if scheduled == nil { conversation.begin(query, speaker: speaker, now: Date()) }
         questionState = conversation.phase.rawValue
-        suggestion.begin(mode: mode, question: query)
-        suggestion.trace = pipelineTrace ?? PipelineTrace(id: id)
-        suggestion.mark(.analysisDispatched)
+        output.begin(mode: mode, question: query)
+        output.trace = pipelineTrace ?? PipelineTrace(id: id)
+        output.mark(.analysisDispatched)
+        publishAnswer(id, store: output)
         onShowOverlay?(automatic)
+        answerTimeout?.cancel()
+        answerTimeout = Task { [weak self] in
+            guard let self else { return }
+            do { try await Task.sleep(nanoseconds: UInt64(self.answerTimeoutSeconds * 1_000_000_000)) } catch { return }
+            guard self.requestID == id, self.answerIsRunning else { return }
+            self.answerTask?.cancel(); self.requestID = UUID()
+            output.fail(ServiceGuide.text("Answer timed out. Try again manually.", "回答超时，请手动重试。", self.settings.language))
+            self.publishAnswer(id, store: output); self.answerIsRunning = false; self.activeStore = nil
+            self.conversation.finish(success: false, question: query)
+            self.drainQuestions()
+        }
         let epoch = liveEpoch, started = ProcessInfo.processInfo.systemUptime
         answerTask = Task { [weak self] in
             guard let self else { return }
@@ -776,15 +993,15 @@ final class AppCoordinator: ObservableObject {
                                 guard let embedding else { throw CopilotError.message("Embedding unavailable") }
                                 // An index built with another embedding model cannot use this vector.
                                 if documents.contains(where: { $0.chunkCount > 0 && $0.embeddingModel == embedding.model }) {
-                                    self.suggestion.mark(.embeddingStart)
+                                    output.mark(.embeddingStart)
                                     vector = try await embedding.embed([normalized.semantic]).first
                                     try Task.checkCancellation(); guard self.requestID == id else { return }
-                                    self.suggestion.mark(.embeddingComplete)
+                                    output.mark(.embeddingComplete)
                                 }
                             } catch {
                                 try Task.checkCancellation()
                                 guard self.requestID == id else { return }
-                                self.suggestion.warning = "Semantic retrieval unavailable; using local keyword search."
+                                output.warning = "Semantic retrieval unavailable; using local keyword search."
                             }
                             sources = try await knowledge.retrieve(query: normalized, vector: vector, model: embedding?.model ?? settings.selectedEmbeddingIdentity, limit: settings.retrievalCount)
                         }
@@ -792,52 +1009,61 @@ final class AppCoordinator: ObservableObject {
                 } catch {
                     try Task.checkCancellation()
                     guard self.requestID == id else { return }
-                    self.suggestion.warning = settings.knowledgeMode == .hybrid
+                    output.warning = settings.knowledgeMode == .hybrid
                         ? "Knowledge database unavailable; answering from general context."
                         : "Knowledge database unavailable; strict mode cannot answer without evidence."
                 }
                 try Task.checkCancellation(); guard self.requestID == id else { return }
-                self.suggestion.sources = sources
-                self.suggestion.retrievalMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
-                self.suggestion.mark(.ragComplete)
+                output.sources = sources
+                output.retrievalMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+                output.mark(.ragComplete)
                 if settings.knowledgeMode == .knowledgeBaseOnly && sources.isEmpty {
-                    self.suggestion.appendDelta(settings.answerLanguage.missingEvidence(question: languageQuestion ?? query))
+                    let missing = settings.bilingualAnswers
+                        ? AnswerLanguage.chinese.missingEvidence(question: query) + "\n" + AnswerLanguage.english.missingEvidence(question: query)
+                        : settings.answerLanguage.missingEvidence(question: languageQuestion ?? query)
+                    output.appendDelta(missing)
                 } else {
                     var answer = AnswerRequest(query: normalized, conversation: context, scenario: settings.scenario, sources: sources, mode: mode,
-                                               knowledgeMode: settings.knowledgeMode, answerLanguage: settings.answerLanguage, languageQuestion: languageQuestion)
+                                               knowledgeMode: settings.knowledgeMode, answerLanguage: settings.answerLanguage, bilingualAnswers: settings.bilingualAnswers, additionalAnswerInstructions: settings.additionalAnswerInstructions, languageQuestion: languageQuestion)
                     answer.onStreamProgress = { [weak self] stage, time in
                         guard let coordinator = self else { return }
                         await MainActor.run {
-                            guard coordinator.requestID == id, coordinator.suggestion.isLoading else { return }
-                            coordinator.suggestion.mark(stage, at: time)
+                            guard coordinator.requestID == id, output.isLoading else { return }
+                            output.mark(stage, at: time)
+                            coordinator.publishAnswer(id, store: output)
                         }
                     }
                     let reasoning: any ReasoningProvider = self.isMock ? (self.mockReasoning ?? MockReasoningProvider()) :
                         try ReasoningProviderFactory.make(settings: settings, liveKey: liveKey, analysisKey: analysisKey)
-                    self.suggestion.mark(.modelRequest)
+                    output.mark(.modelRequest)
                     var first = true
                     for try await delta in reasoning.stream(answer) {
                         try Task.checkCancellation(); guard self.requestID == id else { return }
                         guard !delta.isEmpty else { continue }
                         if first {
-                            self.suggestion.firstTextMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000); first = false
-                            self.suggestion.mark(.firstToken)
+                            output.firstTextMS = Int((ProcessInfo.processInfo.systemUptime - started) * 1000); first = false
+                            output.mark(.firstToken)
                         }
-                        self.suggestion.appendDelta(delta)
+                        output.appendDelta(delta)
+                        self.publishAnswer(id, store: output)
                     }
                 }
                 guard self.requestID == id else { return }
-                self.suggestion.mark(.answerComplete)
-                self.suggestion.finish(); self.conversation.finish(success: true, question: query)
+                output.mark(.answerComplete)
+                output.finish(); self.conversation.finish(success: true, question: query)
                 if let delegationID, self.liveEpoch == epoch {
-                    let summary = "Assistance completed in the text overlay for the question. Brief result: " + String(self.suggestion.text.prefix(900))
+                    let summary = "Assistance completed in the text overlay for the question. Brief result: " + String(output.text.prefix(900))
                     (speaker == .room ? self.micLive : self.systemLive)?.appendContext(summary, delegationID: delegationID)
                 }
             } catch {
                 guard self.requestID == id, !Task.isCancelled else { return }
-                self.suggestion.mark(.failed)
-                self.suggestion.fail(error.localizedDescription); self.conversation.finish(success: false, question: query)
+                output.mark(.failed)
+                output.fail(error.localizedDescription); self.conversation.finish(success: false, question: query)
             }
+            guard self.requestID == id else { return }
+            self.answerTimeout?.cancel(); self.answerIsRunning = false; self.activeStore = nil
+            self.publishAnswer(id, store: output)
+            self.drainQuestions()
             self.questionState = self.conversation.phase.rawValue
             if self.pendingAutomatic != nil { self.scheduleAutomatic() }
             self.layaGate.retryPending()

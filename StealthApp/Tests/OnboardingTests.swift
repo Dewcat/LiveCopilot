@@ -13,7 +13,7 @@ final class OnboardingTests: XCTestCase {
             app.settings.scenario = scenario
             OnboardingRecommendation.applyInitialIfNeeded(app)
             XCTAssertEqual(app.onboarding.state.speechScenario, .mixedInterview)
-            XCTAssertEqual(app.settings.listeningService, .paraformer)
+            XCTAssertEqual(app.settings.listeningService, .zipformer)
             XCTAssertTrue(app.onboarding.state.wantsKnowledge)
             XCTAssertEqual(app.onboarding.state.knowledgeRequested, true)
         }
@@ -47,9 +47,9 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testSpeechScenarioRecommendationsUseLanguageNeedsAndHardware() {
-        XCTAssertEqual(OnboardingSpeechScenario.mixedInterview.engine(appleAvailable: true), .paraformer)
+        XCTAssertEqual(OnboardingSpeechScenario.mixedInterview.engine(appleAvailable: true), .zipformer)
         XCTAssertEqual(OnboardingSpeechScenario.singleLanguage.engine(appleAvailable: true), .apple)
-        XCTAssertEqual(OnboardingSpeechScenario.singleLanguage.engine(appleAvailable: false), .paraformer)
+        XCTAssertEqual(OnboardingSpeechScenario.singleLanguage.engine(appleAvailable: false), .zipformer)
         XCTAssertEqual(OnboardingSpeechScenario.multilingualMeeting.engine(appleAvailable: false), .openAI)
         let multilingual = OnboardingRecommendation(scenario: .interview, typing: false, appleReady: false,
                                                     jevSupported: false, speechScenario: .multilingualMeeting)
@@ -112,7 +112,7 @@ final class OnboardingTests: XCTestCase {
         app.onboarding.state.knowledgeRequested = true
         app.onboarding.state.speechScenario = .mixedInterview
         OnboardingRecommendation.apply(app)
-        XCTAssertEqual(app.settings.listeningService, .paraformer)
+        XCTAssertEqual(app.settings.listeningService, .zipformer)
         OnboardingRecommendation.selectScenario(.multilingualMeeting, coordinator: app)
         XCTAssertEqual(app.settings.listeningService, .openAI)
         XCTAssertEqual(app.settings.liveSpeechLanguage, .unrestricted)
@@ -122,9 +122,9 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(app.onboarding.state.speechManuallySelected, true)
         let before = app.settings
         OnboardingRecommendation.apply(app)
-        XCTAssertEqual(app.settings.listeningService, app.appleSpeech.available ? .apple : .paraformer)
+        XCTAssertEqual(app.settings.listeningService, app.appleSpeech.available ? .apple : .zipformer)
         var expected = before
-        expected.listeningService = app.appleSpeech.available ? .apple : .paraformer
+        expected.listeningService = app.appleSpeech.available ? .apple : .zipformer
         expected.embeddingService = .local; expected.automaticSuggestions = app.laya.state != .unsupported
         XCTAssertEqual(app.settings, expected, "Restore must not touch the answer provider, language, window or unrelated settings")
         XCTAssertEqual(AppSettings.load(defaults: defaults), app.settings)
@@ -147,9 +147,11 @@ final class OnboardingTests: XCTestCase {
         var inventory = OnboardingSetupInventory()
         var setup = OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory)
         XCTAssertEqual(setup.resources.map(\.kind), [.local(.streamingSpeech), .local(.embedding), .laya])
-        XCTAssertEqual(setup.knownBytes, 872_400_115)
-        XCTAssertEqual(setup.unknownSizeCount, 1)
-        XCTAssertNil(setup.resources.last?.bytes, "Never invent a complete Laya/runtime size")
+        XCTAssertEqual(setup.knownBytes, 1_639_227_742)
+        XCTAssertEqual(setup.unknownSizeCount, 0)
+        XCTAssertEqual(setup.resources.last?.bytes, 766_827_627, "Include Python, wheels, source and model assets from bundled pins")
+        inventory.layaDownloadBytes = nil
+        XCTAssertEqual(OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory).unknownSizeCount, 1, "Missing manifests must not invent a size")
         inventory.downloading = .streamingSpeech; inventory.queued = [.embedding]
         inventory.layaState = .installing
         setup = .init(settings: settings, state: state, inventory: inventory)
@@ -196,7 +198,8 @@ final class OnboardingTests: XCTestCase {
     func testKnownSizesMatchPinnedDistributionManifestAndUnknownDigestStaysUnknown() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("docs/oss-model-manifest.json"))) as? [String: Any])
-        let entries = try XCTUnwrap(object["objects"] as? [[String: Any]])
+        let zip = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("docs/zipformer-model-manifest.json"))) as? [String: Any])
+        let entries = try XCTUnwrap(object["objects"] as? [[String: Any]]) + XCTUnwrap(zip["objects"] as? [[String: Any]])
         for kind in LocalModelKind.allCases {
             for download in kind.downloads {
                 let entry = try XCTUnwrap(entries.first { $0["sha256"] as? String == download.sha256 })
@@ -425,20 +428,22 @@ final class OnboardingTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         var started: [LocalModelKind] = []
         let completed = expectation(description: "second model installed")
-        let manager = LocalModelManager(root: root) { kind, location in
+        let finished = expectation(description: "download and verification finished")
+        let manager = LocalModelManager(root: root, embeddingVerifier: { _ in }) { kind, location in
             started.append(kind)
             if kind == .streamingSpeech { throw CopilotError.message("fixture transfer failed") }
             try Self.writeInstalled(kind, root: location)
         }
         let subscription = manager.$installed.filter { $0.contains(.embedding) }.prefix(1).sink { _ in completed.fulfill() }
+        let done = manager.$downloading.dropFirst().filter { $0 == nil && manager.embeddingVerification.isReady }.prefix(1).sink { _ in finished.fulfill() }
         manager.enqueue([.streamingSpeech, .embedding, .embedding])
-        await fulfillment(of: [completed], timeout: 5)
+        await fulfillment(of: [completed, finished], timeout: 5)
         XCTAssertEqual(started, [.streamingSpeech, .embedding])
         XCTAssertEqual(manager.failures[.streamingSpeech], "fixture transfer failed")
         manager.enqueue([.embedding])
         XCTAssertNil(manager.downloading)
         XCTAssertTrue(manager.queued.isEmpty)
-        subscription.cancel(); await manager.shutdown()
+        subscription.cancel(); done.cancel(); await manager.shutdown()
     }
     @MainActor func testCancelDropsQueuedDownloadsAndKeepsExistingFiles() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -569,11 +574,11 @@ final class OnboardingTests: XCTestCase {
         let plan = OnboardingRecommendation(scenario: .defense, typing: false, appleReady: true)
         let updated = plan.applying(to: current)
         XCTAssertTrue(plan.wantsKnowledge)
-        XCTAssertEqual(updated.listeningService, .apple)
+        XCTAssertEqual(updated.listeningService, .zipformer)
         XCTAssertEqual(updated.embeddingService, .local)
         XCTAssertTrue(updated.automaticSuggestions)
         var expected = current
-        expected.listeningService = .apple; expected.embeddingService = .local; expected.automaticSuggestions = true
+        expected.listeningService = .zipformer; expected.embeddingService = .local; expected.automaticSuggestions = true
         XCTAssertEqual(updated, expected, "provider, model, language, mode, tools and window choices must be retained")
         let meeting = OnboardingRecommendation(scenario: .meeting, typing: true, appleReady: false)
         XCTAssertFalse(meeting.wantsKnowledge)

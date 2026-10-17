@@ -18,12 +18,26 @@ final class LocalLiveProvider: LiveProvider {
     private var speaking = false
     private var inferenceFailed = false
     private var partial = ""
+    private let contextual: Bool
+    private var nextTerms: [String] = []
+    private var sentTerms: [String]?
 
-    init(directory: URL, speaker: Speaker, sessionStart: Date = Date(), executable: URL? = nil) {
+    init(directory: URL, speaker: Speaker, sessionStart: Date = Date(), executable: URL? = nil, contextual: Bool = false, terms: [String] = []) {
         self.speaker = speaker; self.sessionStart = sessionStart
-        worker = .init(mode: "paraformer", modelDirectory: directory, executable: executable)
+        self.contextual = contextual; self.nextTerms = terms
+        worker = .init(mode: contextual ? "zipformer" : "paraformer", modelDirectory: directory, executable: executable)
     }
-    func prepare() async throws { _ = try await worker.call(["op": "ping"]) }
+    func updateTerms(_ terms: [String]) { nextTerms = terms }
+    private func applyTerms() async throws {
+        guard contextual, sentTerms != nextTerms else { return }
+        let snapshot = nextTerms
+        _ = try await worker.call(["op": "terms", "terms": snapshot])
+        sentTerms = snapshot
+    }
+    func prepare() async throws {
+        _ = try await worker.call(["op": "ping"])
+        try await applyTerms()
+    }
     func connect(context: String) {
         guard !active else { return }
         active = true; closing = false
@@ -56,6 +70,7 @@ final class LocalLiveProvider: LiveProvider {
                 let count = min(self.pending.count, 16000) // Up to 0.5 s per IPC command.
                 let data = Data(self.pending.prefix(count)); self.pending.removeFirst(count)
                 do {
+                    try await self.applyTerms()
                     let result = try await self.worker.call(["op": "audio", "pcm": data.base64EncodedString()])
                     if self.active || self.closing { self.consume(result) }
                 } catch { self.inferenceFailed = true; if self.active { self.fail() }; return }

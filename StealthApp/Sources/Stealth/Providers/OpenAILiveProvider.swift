@@ -27,9 +27,21 @@ enum LiveProtocol {
             "audio": ["format": ["type": "audio/pcm", "rate": 24000], "output": ["voice": "marin"]],
             "delegation": ["type": "client"], "store": false]
         if !context.isEmpty {
-            session["input"] = [["role": "user", "content": [["type": "input_text", "text": "Prior conversation (reference only):\n" + String(context.suffix(6000))]]]]
+            session["input"] = [["type": "message", "role": "user", "content": [["type": "input_text", "text": "Prior conversation (reference only):\n" + String(context.suffix(6000))]]]]
         }
         return ["type": "session.start", "event_id": UUID().uuidString, "session": session]
+    }
+    static func connectionFailure(status: Int?, error: Error?) -> (message: String, retry: Bool) {
+        switch status {
+        case 400, 401, 402, 403, 404, 429:
+            return (ServiceHTTPFailure(status: status!).localizedDescription, false)
+        default:
+            if let error = error as NSError?, error.domain == NSURLErrorDomain {
+                if error.code == NSURLErrorTimedOut { return ("Live startup timed out. Check network and model access.", true) }
+                if error.code == NSURLErrorNotConnectedToInternet { return ("No internet connection. Reconnect and try the speech service again.", true) }
+            }
+            return ("Live connection failed. Check your network.", true)
+        }
     }
     static func parse(_ obj: [String: Any], speaker: Speaker, now: Date = Date()) -> LiveEvent? {
         switch obj["type"] as? String {
@@ -44,12 +56,7 @@ enum LiveProtocol {
             return .delegation(id: id, offsetMS: obj["offset_ms"] as? Int ?? 0)
         case "session.closed": return .closed(finalized: true)
         case "error":
-            let error = obj["error"] as? [String: Any]
-            let code = error?["code"] as? String ?? "unknown"
-            let safeCode = code.range(of: "^[a-z_]{1,64}$", options: .regularExpression) == nil ? "unknown" : code
-            // Do not surface raw error text: it can contain request/credential content.
-            let auth = code.contains("auth") || code.contains("api_key") || code.contains("permission")
-            return .failed(auth ? "Live authentication/access failed (\(safeCode)). Check your API key and model access." : "Live command/session failed (\(safeCode)). Check model configuration, API access and network.")
+            return .failed(ServiceHTTPFailure(status: 0, data: try? JSONSerialization.data(withJSONObject: obj)).localizedDescription)
         default: return nil // Output audio is intentionally discarded. Nothing is played.
         }
     }
@@ -134,7 +141,7 @@ final class OpenAILiveProvider: NSObject, LiveProvider {
                 } catch {
                     guard let self, self.generation == epoch, !Task.isCancelled else { return }
                     if self.closing { self.onEvent?(.closed(finalized: false)); self.finishConnection() }
-                    else { self.failed("Live disconnected. Reconnecting if possible; manual text queries remain available.") }
+                    else { self.transportFailed(socket, error: error) }
                     return
                 }
             }
@@ -172,17 +179,22 @@ final class OpenAILiveProvider: NSObject, LiveProvider {
             while let self, self.generation == epoch, !self.queue.isEmpty, !Task.isCancelled {
                 let message = self.queue.removeFirst(); self.queuedBytes -= message.utf8.count
                 do { try await socket.send(.string(message)) }
-                catch { if self.generation == epoch { self.failed("Live upload failed. Check network connection.") }; return }
+                catch { if self.generation == epoch { self.transportFailed(socket, error: error) }; return }
             }
             if let self, self.generation == epoch { self.senderTask = nil }
         }
+    }
+    private func transportFailed(_ task: URLSessionTask, error: Error?) {
+        guard task === socket, active else { return }
+        let failure = LiveProtocol.connectionFailure(status: (task.response as? HTTPURLResponse)?.statusCode, error: error)
+        failed(failure.message, retry: failure.retry)
     }
     private func failed(_ message: String, retry: Bool = true) {
         guard active else { return }
         if closing { onEvent?(.closed(finalized: false)); finishConnection(); return }
         cleanTransport()
         onEvent?(.failed(message))
-        guard retry && retries < 3 else { active = false; onEvent?(.status("\(speaker.rawValue): disconnected — stop/start listening to retry.")); return }
+        guard retry && retries < 3 else { active = false; return }
         retries += 1
         let wait = UInt64(1 << (retries - 1)) * 1_000_000_000
         reconnectTask = Task { [weak self] in
@@ -228,8 +240,39 @@ extension OpenAILiveProvider: URLSessionWebSocketDelegate {
         guard error != nil else { return }
         Task { @MainActor [weak self] in
             guard let self, task === self.socket, self.active else { return }
-            let code = (task.response as? HTTPURLResponse)?.statusCode
-            self.failed(code == 401 || code == 403 ? "Live authentication/access failed. Check the key and model access." : "Live connection failed. Check your network.", retry: code != 401 && code != 403)
+            self.transportFailed(task, error: error)
+        }
+    }
+}
+
+/// A real session handshake, without capturing or sending user audio.
+enum LiveConnectionProbe {
+    @MainActor static func run(provider: any LiveProvider, timeout: TimeInterval = 25) async throws {
+        var ready = false, failure: String?
+        provider.onEvent = { event in
+            switch event {
+            case .ready: ready = true
+            case .failed(let message): failure = message
+            case .closed: if !ready { failure = "Speech connection closed before the session was ready." }
+            default: break
+            }
+        }
+        do {
+            provider.connect(context: "")
+            let deadline = Date().addingTimeInterval(timeout)
+            while !ready && failure == nil && Date() < deadline {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            try Task.checkCancellation()
+            guard ready, failure == nil else {
+                throw CopilotError.message(failure ?? "Live startup timed out. Check network and model access.")
+            }
+            provider.onEvent = nil
+            await provider.disconnect()
+        } catch {
+            provider.onEvent = nil
+            await provider.disconnect()
+            throw error
         }
     }
 }

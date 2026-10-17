@@ -3,6 +3,61 @@ import Foundation
 @testable import LiveCopilot
 
 final class LayaWorkerTests: XCTestCase {
+    func testPinnedInitialDownloadSizeAndIncompleteManifest() throws {
+        let pins = try XCTUnwrap(LayaDownloadSize.load())
+        XCTAssertEqual(pins.totalBytes, 766_827_627)
+        let complete = Data(#"{"python":{"size":10},"source":{"size":20},"wheels":[{"size":30}],"model":[{"size":40},{"size":50}]}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(LayaDownloadSize.self, from: complete).totalBytes, 150)
+        let missing = Data(#"{"python":{"size":10},"source":{"size":20},"wheels":[{}],"model":[{"size":40}]}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(LayaDownloadSize.self, from: missing))
+        let invalid = LayaDownloadSize(python: .init(size: 10), source: .init(size: 20), wheels: [.init(size: 0)], model: [.init(size: 40)])
+        XCTAssertNil(invalid.totalBytes)
+    }
+
+    @MainActor func testReadyStateTracksUnexpectedWorkerExitAndIntentionalStop() async throws {
+        #if arch(arm64)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("laya-state-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let current = root.appendingPathComponent("current"), resources = root.appendingPathComponent("resources")
+        let required = ["source/laya_mlx/agent.py", "model/model.safetensors", "model/rl_agent_config.json", "model/encoder/config.json", "model/tokenizer/tokenizer.json"]
+        var hashes: [String: String] = [:]
+        for name in required {
+            let file = current.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("fixture".utf8).write(to: file); hashes[name] = String(repeating: "a", count: 64)
+        }
+        try FileManager.default.createDirectory(at: current.appendingPathComponent("venv/bin"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: current.appendingPathComponent("venv/bin/python3"), withDestinationURL: URL(fileURLWithPath: "/usr/bin/python3"))
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["id": "fixture"]).write(to: resources.appendingPathComponent("pins.json"))
+        try JSONSerialization.data(withJSONObject: ["schema": 1, "pin_id": "fixture", "files": hashes]).write(to: current.appendingPathComponent("receipt.json"))
+        try Data((ready + "time.sleep(0.3)\nos._exit(7)\n").utf8).write(to: resources.appendingPathComponent("worker.py"))
+        let manager = LayaRuntimeManager(root: root, resources: resources)
+        XCTAssertEqual(manager.state, .installed)
+        try await manager.prepareAndWait()
+        XCTAssertEqual(manager.state, .ready)
+        try await Task.sleep(nanoseconds: 700_000_000)
+        XCTAssertEqual(manager.state, .failed)
+        try await manager.prepareAndWait()
+        manager.stop()
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(manager.state, .installed, "Intentional stop must not become a crash")
+        manager.checkModel()
+        XCTAssertEqual(manager.state, .loading)
+        manager.cancel()
+        XCTAssertEqual(manager.state, .installed)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(manager.state, .installed, "Cancelled check must not publish a stale ready or failed state")
+        try await manager.prepareAndWait()
+        XCTAssertTrue(manager.isReady)
+        manager.removeDownloadedFiles()
+        XCTAssertEqual(manager.state, .notInstalled)
+        XCTAssertFalse(manager.isInstalled)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+        XCTAssertFalse(manager.diagnosticEvents.isEmpty, "Removing the diagnostics UI must not remove runtime logs")
+        #endif
+    }
+
     func testBootstrapAcceptsPinnedPythonWithNumericSize() throws {
         let digest = String(repeating: "a", count: 64)
         let data = try JSONSerialization.data(withJSONObject: ["python": [

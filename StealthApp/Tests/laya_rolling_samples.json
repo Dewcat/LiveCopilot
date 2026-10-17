@@ -1,0 +1,457 @@
+[
+  {
+    "id": "imperative",
+    "split": "development",
+    "respond": true,
+    "text": "第一个项目仔细讲一下吧",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "filler-imperative",
+    "split": "development",
+    "respond": true,
+    "text": "啊第一个项目仔细讲一下吧",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "introduce",
+    "split": "development",
+    "respond": true,
+    "text": "你好呀介绍一下你的项目",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "context-followup",
+    "split": "development",
+    "respond": true,
+    "text": "第一个呢",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "介绍一下你的三个项目。",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "第一个是检索系统，第二个是语音助手，第三个是数据处理系统。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "elaborate",
+    "split": "development",
+    "respond": true,
+    "text": "这个再展开讲讲",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "介绍一下缓存策略。",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "采用本地缓存，定期更新。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "independent",
+    "split": "development",
+    "respond": true,
+    "text": "你期望的薪资是多少",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "介绍一下项目。",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "做了检索系统。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "latency",
+    "split": "development",
+    "respond": true,
+    "text": "那延迟呢",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "为什么选这个方案？",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "它占用内存较少。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "statement",
+    "split": "development",
+    "respond": false,
+    "text": "今天我们先讨论项目进度，明天再看预算。",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "answered-statement",
+    "split": "development",
+    "respond": false,
+    "text": "第一个项目是一个知识库检索系统。",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "第一个项目仔细讲一下吧",
+          "handled": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "self",
+    "split": "development",
+    "respond": false,
+    "text": "第一个项目我仔细讲一下吧",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "reported",
+    "split": "development",
+    "respond": false,
+    "text": "他说第一个项目仔细讲一下吧",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "negated",
+    "split": "development",
+    "respond": false,
+    "text": "第一个项目不用仔细讲了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "thanks",
+    "split": "development",
+    "respond": false,
+    "text": "好的，谢谢",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "请介绍一下你的项目。",
+          "handled": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "unfinished",
+    "split": "development",
+    "respond": true,
+    "annotation_reason": "The request to introduce the project is clear; an unfinished reason does not revoke it.",
+    "text": "请介绍这个项目，因为",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "dangling",
+    "split": "development",
+    "respond": false,
+    "text": "第一个项目的",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "en",
+    "split": "development",
+    "respond": true,
+    "text": "Could you explain your approach to this problem?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "enfollow",
+    "split": "development",
+    "respond": true,
+    "text": "And the tradeoffs?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "Explain your caching strategy.",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "It uses an in-memory cache.",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "enself",
+    "split": "development",
+    "respond": false,
+    "text": "I will explain the first project in detail.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-imperative",
+    "split": "holdout",
+    "respond": true,
+    "text": "请详细说明失败后怎么恢复",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-topic",
+    "split": "holdout",
+    "respond": true,
+    "text": "缓存策略展开说一下",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-followup",
+    "split": "holdout",
+    "respond": true,
+    "text": "那第二个呢",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "介绍一下你负责的项目",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "有三个，分别是语音助手、检索系统和数据分析。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-compare",
+    "split": "holdout",
+    "respond": true,
+    "text": "可以对比一下这两种方案吗",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "项目采用什么存储方案",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "评估过 Redis 和 PostgreSQL。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-why",
+    "split": "holdout",
+    "respond": true,
+    "text": "为什么不用 Redis",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "You",
+          "text": "最后用了 PostgreSQL。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-en",
+    "split": "holdout",
+    "respond": true,
+    "text": "Walk me through a failure you handled",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-en-follow",
+    "split": "holdout",
+    "respond": true,
+    "text": "And memory usage?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "How did the cache perform?",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "The response time was under fifty milliseconds.",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-narration",
+    "split": "holdout",
+    "respond": false,
+    "text": "项目中主要负责后端开发",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-log",
+    "split": "holdout",
+    "respond": false,
+    "text": "日志显示连接在昨天断开了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-ack",
+    "split": "holdout",
+    "respond": false,
+    "text": "你刚才说的我明白了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "请解释一下缓存策略",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "缓存每分钟更新一次。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-cancel",
+    "split": "holdout",
+    "respond": false,
+    "text": "请先别回答",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "请介绍你的项目",
+          "handled": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "new-incomplete",
+    "split": "holdout",
+    "respond": false,
+    "text": "我想问的是这个项目和",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-en-statement",
+    "split": "holdout",
+    "respond": false,
+    "text": "The service is running normally now.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "new-en-thanks",
+    "split": "holdout",
+    "respond": false,
+    "text": "That makes sense, thank you.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "Explain caching.",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "We cache frequent queries.",
+          "handled": false
+        }
+      ]
+    }
+  }
+]

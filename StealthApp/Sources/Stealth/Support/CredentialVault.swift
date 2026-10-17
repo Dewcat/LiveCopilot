@@ -105,7 +105,7 @@ enum CredentialCheckFeedback: Equatable {
         let text: (String, String)
         switch self {
         case .checking: text = ("Checking this service's saved key…", "正在检查当前服务的已保存密钥…")
-        case .found: text = ("Saved key found. Use Test connection to verify the service; this check made no API request.", "已找到保存的密钥。可点击“测试连接”验证服务；本次检查未发送 API 请求。")
+        case .found: text = ("Saved key found. This check only reads Keychain; no API request was made.", "已找到保存的密钥。本次仅检查本机钥匙串，未发送 API 请求。")
         case .missing: text = ("No saved key was found for this service. Enter a key above and save it.", "未找到当前服务的已保存密钥，请在上方输入并保存。")
         case .authorization: text = ("Keychain authorization is required. Check again and approve the macOS authorization dialog.", "需要钥匙串授权，请再次检查并完成 macOS 系统授权。")
         case .failed: text = ("Could not read the saved key. Check the Keychain status above and try again.", "读取已保存密钥失败，请查看上方钥匙串状态后重试。")

@@ -3,18 +3,16 @@ import SwiftUI
 struct OverlayView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var transcript: TranscriptStore
-    @ObservedObject var suggestion: SuggestionStore
     @ObservedObject var hotkeys: HotkeyStore
     @ObservedObject var onboarding: OnboardingStore
     @State private var query = ""
     @State private var followTranscript = true
-    @State private var transcriptHeight: CGFloat = 22
-    @State private var answerHeight: CGFloat = 28
-    @State private var fixedHeights: [String: CGFloat] = [:]
+    @State private var chromeHeight: CGFloat = 368
+    @State private var answerContentHeight: CGFloat = 56
     var onContentHeight: (CGFloat) -> Void
     var onMinimumHeight: (CGFloat) -> Void
     init(coordinator: AppCoordinator, onContentHeight: @escaping (CGFloat) -> Void = { _ in }, onMinimumHeight: @escaping (CGFloat) -> Void = { _ in }) {
-        self.coordinator = coordinator; transcript = coordinator.transcript; suggestion = coordinator.suggestion; hotkeys = coordinator.hotkeys
+        self.coordinator = coordinator; transcript = coordinator.transcript; hotkeys = coordinator.hotkeys
         onboarding = coordinator.onboarding
         self.onContentHeight = onContentHeight; self.onMinimumHeight = onMinimumHeight
     }
@@ -23,28 +21,34 @@ struct OverlayView: View {
     private var transcriptSize: CGFloat { OverlayTypography.clamped(coordinator.settings.transcriptFontSize, fallback: 12) }
     private var answerSize: CGFloat { OverlayTypography.clamped(coordinator.settings.answerFontSize, fallback: 14) }
     private var speakerWidth: CGFloat { max(35, transcriptSize * 2.8) }
-    private var hasTranscript: Bool { transcript.hasContent }
-    private var transcriptIdeal: CGFloat { hasTranscript ? min(145, max(76, transcriptHeight + 28)) : 0 }
-    private var chromeHeight: CGFloat {
-        // Padding, divider, and spacing between the fixed groups and content panes.
-        (fixedHeights["top"] ?? 66) + (fixedHeights["actions"] ?? 24) + (fixedHeights["bottom"] ?? 84) + 29 + (hasTranscript ? 50 : 40)
-    }
-    private var desiredHeight: CGFloat { chromeHeight + transcriptIdeal + max(28, answerHeight) }
     private func reportSize() {
-        onMinimumHeight(chromeHeight + 28 + (hasTranscript ? 76 : 0))
-        onContentHeight(desiredHeight)
+        // Only the answer viewport grows. The voice area and composer keep
+        // their position relative to the window's stable top edge.
+        let fixedHeight = chromeHeight + 10 + 28 // inter-pane spacing and outer padding
+        onMinimumHeight(fixedHeight + 56)
+        onContentHeight(fixedHeight + max(56, answerContentHeight))
     }
     var body: some View {
         GeometryReader { geometry in
-            let panes = OverlayLayout.panes(available: geometry.size.height - chromeHeight, transcriptIdeal: transcriptIdeal,
-                                            answerIdeal: answerHeight, automatic: coordinator.settings.overlayAutoHeight)
             VStack(alignment: .leading, spacing: 10) {
-                top.fixedSize(horizontal: false, vertical: true).background { measure("top") }
-                if hasTranscript { transcriptView.frame(height: panes.transcript) }
-                actions.fixedSize(horizontal: false, vertical: true).background { measure("actions") }
-                Divider()
-                answer.frame(height: panes.answer)
-                bottom.fixedSize(horizontal: false, vertical: true).background { measure("bottom") }
+                VStack(alignment: .leading, spacing: 10) {
+                    top.frame(height: 120, alignment: .top)
+                    transcriptView.frame(height: 90)
+                    Divider()
+                    actions.frame(height: 28)
+                    bottom.frame(height: 78, alignment: .top)
+                    Divider()
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .background(GeometryReader { measured in
+                    Color.clear.preference(key: OverlayChromeHeightKey.self, value: measured.size.height)
+                })
+                ConversationFlowView(coordinator: coordinator, fontSize: answerSize, onContentHeight: { height in
+                    guard height.isFinite, height > 0, abs(height - answerContentHeight) > 0.5 else { return }
+                    answerContentHeight = height
+                    reportSize()
+                })
+                .frame(maxHeight: .infinity)
             }
             .padding(14)
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
@@ -55,15 +59,13 @@ struct OverlayView: View {
         .environment(\.locale, coordinator.settings.language.locale)
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.12)))
         .overlay(alignment: .bottomTrailing) { resizeHandle }
-        .onPreferenceChange(OverlayContentHeights.self) { heights in
-            if let height = heights["transcript"] { transcriptHeight = height }
-            if let height = heights["answer"] { answerHeight = height }
-            for key in ["top", "actions", "bottom"] { if let height = heights[key] { fixedHeights[key] = height } }
-        }
-        .onChange(of: desiredHeight) { _, _ in reportSize() }
         .onChange(of: coordinator.conversationGeneration) { _, _ in
             query = ""; followTranscript = true
-            transcriptHeight = 22; answerHeight = 28
+            reportSize()
+        }
+        .onPreferenceChange(OverlayChromeHeightKey.self) { height in
+            guard height > 0, abs(height - chromeHeight) > 0.5 else { return }
+            chromeHeight = height
             reportSize()
         }
         .onAppear { reportSize() }
@@ -71,10 +73,7 @@ struct OverlayView: View {
     private var top: some View {
         VStack(alignment: .leading, spacing: 10) {
             header.padding(.trailing, 16)
-            if onboarding.visibleTip == .start && !onboarding.state.prefersTyping {
-                OverlayFirstUseTip(step: .start, coordinator: coordinator)
-            }
-            Text(t(coordinator.statusMessage)).font(.caption).foregroundStyle(.secondary).lineLimit(3).textSelection(.enabled)
+            Text(t(coordinator.statusMessage)).font(.caption).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
             if coordinator.isRunning {
                 HStack {
                     Text(t(coordinator.questionState)).font(.caption2).foregroundStyle(.secondary)
@@ -84,7 +83,7 @@ struct OverlayView: View {
                 }
                 if coordinator.settings.automaticSuggestions,
                    coordinator.settings.listeningService.isLocal {
-                    Text(coordinator.layaExplicitConfirmation ? t("Complete answer request confirmed") : coordinator.layaLastScore.map {
+                    Text(coordinator.layaLastScore.map {
                         String(format: "Laya %@ %.2f / %@ %.2f", t("Latest score"), $0,
                                t("Threshold"), coordinator.settings.layaThreshold)
                     } ?? String(format: "Laya %@ · %@ %.2f", t("Waiting for a decision"),
@@ -93,11 +92,9 @@ struct OverlayView: View {
                         .lineLimit(1).frame(height: 16, alignment: .leading)
                 }
                 if coordinator.settings.listeningService == .apple {
-                    Text(t("Apple ASR uses one language. For mixed Chinese/English, select Paraformer or GPT-Live in Services."))
-                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                if !transcript.hasContent {
-                    Text(t("Listening — waiting for speech")).font(.caption).foregroundStyle(.secondary)
+                    Text(t("Apple ASR uses one language. For mixed Chinese/English, select another speech recognition engine in Services."))
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        .help(t("Apple ASR uses one language. For mixed Chinese/English, select another speech recognition engine in Services."))
                 }
             }
         }
@@ -127,16 +124,13 @@ struct OverlayView: View {
         }
     }
     private var bottom: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center) {
                 TextField(t("Ask anything — listening can be off"), text: $query, axis: .vertical)
-                    .textFieldStyle(.roundedBorder).lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder).lineLimit(1).frame(height: 28)
                     .onSubmit { submit() }.accessibilityIdentifier("manual-query")
                     .onboardingHighlight(onboarding.visibleTip == .start && onboarding.state.prefersTyping)
                 Button(t("Ask")) { submit() }.disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if onboarding.visibleTip == .start && onboarding.state.prefersTyping {
-                OverlayFirstUseTip(step: .start, coordinator: coordinator)
             }
             HStack {
                 Toggle(t("Use recent conversation"), isOn: $coordinator.includeConversation).font(.caption2).toggleStyle(OverlaySwitchStyle())
@@ -149,12 +143,9 @@ struct OverlayView: View {
                     Text(t(coordinator.settings.knowledgeMode == .hybrid ? "Hybrid" : "KB Only")).font(.caption2)
                 }.fixedSize().help(t(coordinator.settings.knowledgeMode.label))
                     .accessibilityIdentifier("knowledge-mode")
-                if suggestion.isLoading { Button(t("Cancel")) { coordinator.cancelAnswer() }.font(.caption) }
+                if coordinator.answerIsRunning { Button(t("Cancel")) { coordinator.cancelAnswer() }.font(.caption) }
             }
             footer.padding(.trailing, 20)
-            if let tip = onboarding.visibleTip, tip == .visibility || tip == .captureExclusion {
-                OverlayFirstUseTip(step: tip, coordinator: coordinator)
-            }
         }
     }
     private func submit() { let value = query; query = ""; coordinator.askText(value) }
@@ -209,7 +200,7 @@ struct OverlayView: View {
                         }
                         if !transcript.partialYou.isEmpty { partialRow(transcript.partialYou, speaker: .you) }
                         Color.clear.frame(height: 1).id("latest")
-                    }.background { measure("transcript") }
+                    }
                 }.onChange(of: transcript.lines) { _, _ in if followTranscript { proxy.scrollTo("latest", anchor: .bottom) } }
                     .onChange(of: transcript.partialThem) { _, _ in if followTranscript { proxy.scrollTo("latest", anchor: .bottom) } }
                     .onChange(of: transcript.partialYou) { _, _ in if followTranscript { proxy.scrollTo("latest", anchor: .bottom) } }
@@ -223,56 +214,10 @@ struct OverlayView: View {
             Text(text).font(.system(size: transcriptSize)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
         }.accessibilityLabel(t("Recognizing") + " · " + t(speaker.rawValue) + " · " + text)
     }
-    private var answer: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 9) {
-                if !suggestion.question.isEmpty { Text(suggestion.question).font(.system(size: answerSize, weight: .semibold)).textSelection(.enabled) }
-                if let warning = suggestion.warning { Text(t(warning)).font(.caption).foregroundStyle(.orange) }
-                if suggestion.isLoading && suggestion.text.isEmpty {
-                    HStack { ProgressView().controlSize(.small); Text(t(suggestion.waitingMessage)).font(.caption) }
-                }
-                if suggestion.text.isEmpty && !suggestion.isLoading && suggestion.error == nil {
-                    Text(t("Ask a question below, or press {shortcut} to generate an answer from the conversation.")
-                        .replacingOccurrences(of: "{shortcut}", with: hotkeys.combo(for: .reply).display))
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-                ForEach(Array(SuggestionParser.sections(suggestion.text).enumerated()), id: \.offset) { _, section in
-                    VStack(alignment: .leading, spacing: 3) {
-                        if !section.title.isEmpty {
-                            Text(section.title).font(.system(size: max(11, answerSize - 1), weight: .semibold)).foregroundStyle(.secondary)
-                        }
-                        Text(.init(section.content)).font(.system(size: answerSize)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                if let error = suggestion.error { Text(t(error)).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
-                if !suggestion.citedSources.isEmpty {
-                    Divider()
-                    Text(t("Sources · cited evidence")).font(.caption.bold())
-                    ForEach(suggestion.citedSources, id: \.index) { citation in
-                        DisclosureGroup("[S\(citation.index)] \(citation.source.chunk.displayLabel(language: coordinator.settings.language))") {
-                            Text(citation.source.chunk.text).font(.system(size: answerSize)).textSelection(.enabled)
-                        }.font(.caption2)
-                    }
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .background { measure("answer") }
-        }.frame(maxWidth: .infinity)
-    }
-
-    private func measure(_ key: String) -> some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: OverlayContentHeights.self, value: [key: ceil(proxy.size.height)])
-        }
-    }
     private var footer: some View {
         HStack {
             Text(t(coordinator.settings.scenario.rawValue)).font(.caption2).foregroundStyle(.secondary)
             Spacer()
-            if let ms = suggestion.firstTextMS { Text("\(t("First text")) \(Double(ms) / 1000, specifier: "%.1f")s").font(.caption2).foregroundStyle(.secondary) }
-            if !suggestion.text.isEmpty {
-                Button(t("Copy")) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(suggestion.text, forType: .string) }.font(.caption2)
-            }
             Text(hotkeys.toggleOverlay.display).font(.caption2).foregroundStyle(.tertiary)
                 .onboardingHighlight(onboarding.visibleTip == .visibility)
         }
@@ -283,13 +228,6 @@ struct OverlayView: View {
             .frame(width: 28, height: 28)
             .help(t("Drag any edge or corner to resize"))
             .allowsHitTesting(false) // The native border owns all eight resize directions.
-    }
-}
-
-private struct OverlayContentHeights: PreferenceKey {
-    static var defaultValue: [String: CGFloat] = [:]
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
     }
 }
 
@@ -322,4 +260,9 @@ private struct OverlaySwitchStyle: ToggleStyle {
             Toggle(isOn: configuration.$isOn) { configuration.label }.toggleStyle(.switch)
         }
     }
+}
+
+private struct OverlayChromeHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

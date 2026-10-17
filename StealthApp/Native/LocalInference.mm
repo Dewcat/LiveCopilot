@@ -25,17 +25,29 @@ class StreamingSpeechEngine {
     const SherpaOnnxVoiceActivityDetector *vad = nullptr;
     std::vector<float> pending, preRoll;
     int64_t processed = 0, received = 0, streamStart = 0;
+    bool contextual = false;
+    std::string nextHotwords;
 public:
-    explicit StreamingSpeechEngine(const std::string &root) {
-        const auto encoder = root + "/encoder.int8.onnx", decoder = root + "/decoder.int8.onnx";
+    explicit StreamingSpeechEngine(const std::string &root, bool useHotwords = false) : contextual(useHotwords) {
+        const auto encoder = root + "/encoder.int8.onnx", decoder = root + (contextual ? "/decoder.onnx" : "/decoder.int8.onnx");
         const auto tokens = root + "/tokens.txt", vadPath = root + "/silero_vad.onnx";
         SherpaOnnxOnlineRecognizerConfig config{};
         config.feat_config.sample_rate = 16000; config.feat_config.feature_dim = 80;
-        config.decoding_method = "greedy_search";
+        config.decoding_method = contextual ? "modified_beam_search" : "greedy_search";
+        config.max_active_paths = 4; config.hotwords_score = 1.5f;
         config.model_config.num_threads = 2; config.model_config.provider = "cpu";
         config.model_config.tokens = tokens.c_str();
-        config.model_config.paraformer.encoder = encoder.c_str();
-        config.model_config.paraformer.decoder = decoder.c_str();
+        const auto joiner = root + "/joiner.int8.onnx", bpe = root + "/bpe.vocab";
+        if (contextual) {
+            config.model_config.transducer.encoder = encoder.c_str();
+            config.model_config.transducer.decoder = decoder.c_str();
+            config.model_config.transducer.joiner = joiner.c_str();
+            config.model_config.modeling_unit = "cjkchar+bpe";
+            config.model_config.bpe_vocab = bpe.c_str();
+        } else {
+            config.model_config.paraformer.encoder = encoder.c_str();
+            config.model_config.paraformer.decoder = decoder.c_str();
+        }
         recognizer = SherpaOnnxCreateOnlineRecognizer(&config);
         if (!recognizer) throw std::runtime_error("streaming_asr_load");
         SherpaOnnxVadModelConfig v{};
@@ -50,6 +62,19 @@ public:
         if (stream) SherpaOnnxDestroyOnlineStream(stream);
         if (vad) SherpaOnnxDestroyVoiceActivityDetector(vad);
         if (recognizer) SherpaOnnxDestroyOnlineRecognizer(recognizer);
+    }
+    void setTerms(NSArray *terms) {
+        if (!contextual || terms.count > 100) throw std::runtime_error("hotwords_unsupported_or_limit");
+        std::string updated;
+        for (id item in terms) {
+            if (![item isKindOfClass:NSString.class] || [item length] > 100) throw std::runtime_error("hotword_invalid");
+            if ([item rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"/\n\r:#"]].location != NSNotFound)
+                throw std::runtime_error("hotword_invalid");
+            if (!updated.empty()) updated += "\n";
+            updated += [[item uppercaseString] UTF8String];
+        }
+        // Only newly created utterances receive this snapshot.
+        nextHotwords = std::move(updated);
     }
     void decode() {
         while (SherpaOnnxIsOnlineStreamReady(recognizer, stream)) SherpaOnnxDecodeOnlineStream(recognizer, stream);
@@ -93,7 +118,9 @@ public:
             preRoll.insert(preRoll.end(), samples, samples + 512);
             if (preRoll.size() > 8000) preRoll.erase(preRoll.begin(), preRoll.end() - 8000);
             if (SherpaOnnxVoiceActivityDetectorDetected(vad)) {
-                stream = SherpaOnnxCreateOnlineStream(recognizer);
+                stream = contextual && !nextHotwords.empty()
+                    ? SherpaOnnxCreateOnlineStreamWithHotwords(recognizer, nextHotwords.c_str())
+                    : SherpaOnnxCreateOnlineStream(recognizer);
                 if (!stream) throw std::runtime_error("streaming_asr_stream");
                 streamStart = processed - preRoll.size();
                 SherpaOnnxOnlineStreamAcceptWaveform(stream, 16000, preRoll.data(), static_cast<int32_t>(preRoll.size()));
@@ -187,6 +214,7 @@ int main(int argc, char **argv) {
             std::unique_ptr<EmbeddingEngine> embedding;
             const std::string mode(argv[1]), root(argv[2]);
             if (mode == "paraformer") streamingSpeech = std::make_unique<StreamingSpeechEngine>(root);
+            else if (mode == "zipformer") streamingSpeech = std::make_unique<StreamingSpeechEngine>(root, true);
             else if (mode == "embedding") embedding = std::make_unique<EmbeddingEngine>(root);
             else return 2;
             reply(@{ @"ready": @YES, @"protocol": @1 });
@@ -203,7 +231,9 @@ int main(int argc, char **argv) {
                     try {
                         NSMutableDictionary *response = [@{ @"id": idValue } mutableCopy];
                         if ([op isEqual:@"ping"]) response[@"ok"] = @YES;
-                        else if (streamingSpeech && ([op isEqual:@"audio"] || [op isEqual:@"flush"])) {
+                        else if (streamingSpeech && [op isEqual:@"terms"] && [command[@"terms"] isKindOfClass:NSArray.class]) {
+                            streamingSpeech->setTerms(command[@"terms"]); response[@"ok"] = @YES;
+                        } else if (streamingSpeech && ([op isEqual:@"audio"] || [op isEqual:@"flush"])) {
                             NSData *pcm = [op isEqual:@"flush"] ? [NSData data] : [[NSData alloc] initWithBase64EncodedString:command[@"pcm"] options:0];
                             if (!pcm) throw std::runtime_error("audio_base64");
                             [response addEntriesFromDictionary:streamingSpeech->accept(pcm, [op isEqual:@"flush"])];

@@ -171,7 +171,7 @@ struct AnalysisMetricIcon: View {
     let explanation: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private static let images: [String: NSImage] = Dictionary(uniqueKeysWithValues:
-        ["rocket-launch", "person-simple-run", "tag", "wallet", "coins"].compactMap { name in
+        ["rocket-launch", "tag", "wallet", "coins"].compactMap { name in
             guard let url = Bundle.main.resourceURL?.appendingPathComponent("MetricIcons/\(name)-fill.svg"),
                   let image = NSImage(contentsOf: url) else { return nil }
             return (name, image)
@@ -179,7 +179,7 @@ struct AnalysisMetricIcon: View {
     private var asset: String? {
         switch tier {
         case .fast: return "rocket-launch"
-        case .steady: return "person-simple-run"
+        case .steady: return nil
         case .inexpensive: return "tag"
         case .moderatePrice: return "wallet"
         case .expensive: return "coins"
@@ -203,7 +203,15 @@ struct AnalysisMetricIcon: View {
         ZStack {
             if tier != nil {
                 Group {
-                    if let asset, let image = Self.images[asset] {
+                    if tier == .steady {
+                        HStack(spacing: 1) {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Capsule().frame(width: 5, height: 1.2)
+                                Capsule().frame(width: 3, height: 1.2)
+                            }
+                            Image(systemName: "car.side.fill").font(.system(size: 13, weight: .medium))
+                        }.frame(width: 22, height: 19)
+                    } else if let asset, let image = Self.images[asset] {
                         Image(nsImage: image).resizable().renderingMode(.template)
                             .scaledToFit().frame(width: 19, height: 19)
                     } else {

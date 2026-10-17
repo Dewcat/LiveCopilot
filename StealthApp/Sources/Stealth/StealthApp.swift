@@ -123,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.updates.blockingReason = { [weak self] in
             guard let self else { return nil }
             let c = self.coordinator
-            guard c.isRunning || c.isTransitioning || c.suggestion.isLoading || c.isIndexing || c.localModels.downloading != nil || c.laya.isBusy || c.appleSpeech.busy else { return nil }
+            guard c.isRunning || c.isTransitioning || c.answerIsRunning || c.isIndexing || c.localModels.downloading != nil || c.laya.isBusy || c.appleSpeech.busy else { return nil }
             return ServiceGuide.text("Finish listening, indexing, or preparing models before checking for updates.",
                                      "请先结束监听、资料索引或模型准备，再检查更新。", c.settings.language)
         }

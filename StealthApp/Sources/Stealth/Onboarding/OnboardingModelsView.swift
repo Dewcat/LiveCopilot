@@ -118,7 +118,7 @@ struct OnboardingModelsView: View {
         }
         .popover(isPresented: $showingCloudKey) {
             OnboardingAdvancedPanel(title: b("OpenAI key", "OpenAI 密钥"), icon: "key.horizontal", language: coordinator.settings.language, close: { showingCloudKey = false }) {
-                CredentialEditor(coordinator: coordinator, analysis: false)
+                CredentialEditor(coordinator: coordinator, analysis: false, liveLayout: true)
             }
         }
     }
@@ -154,6 +154,7 @@ struct OnboardingModelsView: View {
     }
     private var speechName: String {
         switch coordinator.settings.listeningService {
+        case .zipformer: return b("Zipformer · local", "Zipformer · 本地")
         case .paraformer: return b("Paraformer · local", "Paraformer · 本地")
         case .apple: return b("Apple · on-device", "Apple · 本机")
         case .openAI: return b("OpenAI · cloud", "OpenAI · 云端（按用量计费）")
@@ -161,7 +162,7 @@ struct OnboardingModelsView: View {
     }
     @ViewBuilder private var speechLanguage: some View {
         switch coordinator.settings.listeningService {
-        case .paraformer:
+        case .paraformer, .zipformer:
             Text(b("Chinese + English · Auto", "中英混合 · 自动识别"))
                 .help(b("Recognition language", "识别语言"))
         case .apple:
@@ -183,17 +184,21 @@ struct OnboardingModelsView: View {
             Picker(b("Speech service", "识别方式"), selection: Binding(get: { coordinator.settings.listeningService }, set: {
                 OnboardingRecommendation.selectSpeech($0, coordinator: coordinator)
             })) {
+                Text("Zipformer · " + b("Terminology", "术语增强")).tag(ListeningService.zipformer)
                 Text(b("Paraformer · Chinese + English", "Paraformer · 本地中英双语")).tag(ListeningService.paraformer)
                 Text(b("Apple · one language, on-device", "Apple · 本机单语言")).tag(ListeningService.apple).disabled(!apple.available)
                 Text(b("OpenAI · cloud audio", "OpenAI · 云端识别")).tag(ListeningService.openAI)
             }.disabled(!editable).accessibilityIdentifier("onboarding-speech-provider")
             switch coordinator.settings.listeningService {
+            case .zipformer:
+                note(b("Local Chinese/English recognition with terminology enhancement.", "本地中英双语识别，支持术语增强。"))
+                modelStatus(.terminologySpeech)
             case .paraformer:
                 note(b("Chinese and English are recognized automatically on this Mac.", "在本机自动识别中文、英文及中英混合语音。"))
                 modelStatus(.streamingSpeech)
             case .apple:
                 speechLanguage
-                note(b("Uses one recognition language. For mixed Chinese/English, choose Paraformer.", "使用单一识别语言；中英混合请选 Paraformer。"))
+                note(b("Uses one recognition language. For mixed Chinese/English, choose Zipformer.", "使用单一识别语言；中英混合请选 Zipformer。"))
                 OnboardingCapabilityBadge(status: setup[.speech].status, language: coordinator.settings.language)
                 if apple.busy {
                     ProgressView().controlSize(.small)
@@ -259,7 +264,12 @@ struct OnboardingModelsView: View {
                 } else if laya.state == .unsupported {
                     note(b("Requires Apple Silicon and macOS 14+. Use manual replies on this Mac.", "需要 Apple Silicon 和 macOS 14+，此 Mac 可使用手动回答。"))
                 } else {
-                    note(b("Laya includes a separate runtime. Complete download size is unknown.", "Laya 包含独立运行环境，完整下载大小未知。"))
+                    if let bytes = laya.downloadByteCount {
+                        let size = String(format: "%.2f MB", Double(bytes) / 1_000_000)
+                        note(b("Initial download: \(size), including the model and runtime. Cached files reduce repeat downloads.", "首次下载 \(size)，包含模型与运行环境；已有缓存会减少实际下载量。"))
+                    } else {
+                        note(b("Laya includes the model and an isolated runtime.", "Laya 包含模型与独立运行环境。"))
+                    }
                 }
             } else {
                 note(b("The cloud speech service detects questions. No local Laya download is needed.", "由云端语音服务判断问题，无需下载本地 Laya。"))

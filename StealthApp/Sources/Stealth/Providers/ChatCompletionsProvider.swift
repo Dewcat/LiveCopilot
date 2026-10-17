@@ -60,7 +60,7 @@ struct ChatCompletionsProvider: ReasoningProvider {
                             throw CopilotError.message("Malformed reasoning stream. Retry this question.")
                         }
                         guard object["error"] == nil else {
-                            throw CopilotError.message("Analysis service failed. Check its model, key and API limits.")
+                            throw ServiceHTTPFailure(status: 0, data: data)
                         }
                         guard let choices = object["choices"] as? [[String: Any]] else {
                             throw CopilotError.message("Malformed reasoning stream. Retry this question.")

@@ -6,6 +6,9 @@ enum L10n {
     static func text(_ text: String, language: AppLanguage) -> String {
         guard language.usesChinese else { return text }
         if let value = chinese[text] { return value }
+        if let kind = ServiceHTTPFailure.kind(fromSafeMessage: text), let translated = chinese[kind.message] {
+            return translated + text.dropFirst(kind.message.count)
+        }
         for (prefix, translated) in [("Indexing ", "正在索引 "), ("Re-indexing ", "正在重建索引 ")] {
             if text.hasPrefix(prefix) { return translated + text.dropFirst(prefix.count) }
         }
@@ -38,6 +41,24 @@ enum L10n {
         return text
     }
     static let chinese: [String: String] = [
+        "History": "历史记录",
+        "Export": "导出",
+        "Session saved; transcript draft could not be written. You can export it from History.": "会话已保存，但转写文稿写入失败。可在历史记录中重新导出。",
+        "Could not delete transcript draft.": "无法删除转写文稿。",
+
+        "Use a comfortable conversation height with fixed voice and input areas. Drag an edge to resize; answers scroll independently.": "使用适合会话阅读的窗口高度，语音区和输入区固定；可拖动边缘调整大小，回答独立滚动。",
+
+        "Fast response": "快速响应",
+        "Smart merging": "智能合并",
+        "Complete question first": "完整提问优先",
+        "Check key": "检测密钥",
+        ServiceHTTPFailure.Kind.authentication.message: "API 密钥被拒绝，可能无效、已过期或被撤销。请更换密钥，并确认服务商与地域匹配。",
+        ServiceHTTPFailure.Kind.billing.message: "API 余额或额度不足，请检查是否尚未充值、余额已用完、额度已过期或达到用量上限。",
+        ServiceHTTPFailure.Kind.permission.message: "服务访问被拒绝，请检查模型权限及地区可用性。",
+        ServiceHTTPFailure.Kind.model.message: "模型或接口不可用，请检查模型 ID 与服务地址。",
+        ServiceHTTPFailure.Kind.parameters.message: "服务拒绝请求，请检查模型名称与支持的配置。",
+        ServiceHTTPFailure.Kind.rateLimit.message: "请求频率或额度受限，请稍后重试；若持续失败，请检查 API 余额与用量上限。",
+        ServiceHTTPFailure.Kind.service.message: "服务暂不可用，请稍后重试。",
         "Download Laya to enable offline question detection.": "下载 Laya 后即可在本地判断是否需要回答。",
         "Laya requires Apple Silicon and macOS 14 or newer.": "Laya 需要 Apple Silicon 和 macOS 14 或更新版本。",
         "Laya is installed. Load it to enable offline detection.": "Laya 已安装，加载后可启用本地判断。",
@@ -62,9 +83,9 @@ enum L10n {
         "Evidence & notes": "依据与补充",
         "API key saved · authorization needed": "API Key 已保存 · 待授权",
         "Authorize saved key": "授权已保存的密钥",
-        "Check saved key": "检查已保存的密钥",
+        "Check saved key": "检测密钥",
         "Saved key needs authorization. Click Authorize saved key to allow access.": "已有保存的密钥。点击“授权已保存的密钥”，在系统提示中允许访问即可，无需重新输入 Key。",
-        "Saved securely on this Mac and reused on launch. Existing development keys are imported once; startup never opens an authorization dialog.": "密钥安全保存在本机，重启后自动复用。旧开发密钥只需迁移一次；启动时不会主动弹出授权窗口。",
+        "Saved securely on this Mac and reused on launch.": "密钥安全保存在本机，重启后自动复用。",
         "Apple · on-device speech": "Apple · 本地语音识别",
         "Apple speech requires macOS 26 and a supported Mac and language.": "Apple 语音识别需要 macOS 26、受支持的 Mac 与语言。",
         "Download the selected Apple speech language in Services first.": "请先在服务页面下载所选 Apple 识别语言。",
@@ -117,7 +138,7 @@ enum L10n {
         "Listening stopped. The final local speech segment could not be completed.": "监听已停止，但最后一段本地语音未能完成转写。",
         "Local runtime is missing. Reinstall the complete LiveCopilot app.": "缺少本地运行组件，请重新安装完整的 LiveCopilot 应用。",
         "Local runtime could not start. Reinstall the complete LiveCopilot app.": "本地运行组件无法启动，请重新安装完整应用。",
-        "Local model could not load. Download the model again in Services.": "本地模型无法加载，请在“服务”中重新下载模型。",
+        "Local model could not load. Download the model again in Services.": "本地模型加载失败。请检查可用内存与运行环境，并在“服务”中重试验证。",
         "Local model input is too large.": "本地模型输入过长。",
         "Local model returned an invalid response.": "本地模型返回了无效结果。",
         "Local model could not process this input. Check model files and input length.": "本地模型无法处理此输入，请检查模型文件和输入长度。",
@@ -139,6 +160,26 @@ enum L10n {
         "Live disconnected. Reconnecting if possible; manual text queries remain available.": "实时服务已断开，将尝试重新连接；仍可直接输入问题。",
         "Live upload failed. Check network connection.": "实时音频上传失败，请检查网络。",
         "Live authentication/access failed. Check the key and model access.": "实时服务验证失败，请检查密钥与模型权限。",
+        "OpenAI rejected the speech API key (HTTP 401). Replace it with a valid OpenAI API key.": "OpenAI 拒绝了语音服务密钥（HTTP 401），请更换有效的 OpenAI API Key。",
+        "Speech service access denied (HTTP 403). Check project permissions and regional availability.": "语音服务访问被拒绝（HTTP 403），请检查项目权限及地区可用性。",
+        "Speech endpoint or model unavailable (HTTP 404). Check GPT-Live-1 access.": "语音接口或模型不可用（HTTP 404），请检查 GPT-Live-1 访问权限。",
+        "Speech session configuration rejected (HTTP 400). Check the model settings.": "语音会话配置被拒绝（HTTP 400），请检查模型设置。",
+        "Speech service quota or rate limit reached (HTTP 429). Check billing and retry later.": "语音服务额度或请求频率受限（HTTP 429），请检查账单并稍后重试。",
+        "No internet connection. Reconnect and try the speech service again.": "网络未连接，请恢复网络后重试语音服务。",
+        "Stop listening before testing the speech connection.": "请先停止监听，再测试语音连接。",
+        "Speech configuration changed. Test the connection again.": "语音配置已更改，请重新测试连接。",
+        "Speech connection closed before the session was ready.": "语音会话尚未就绪，连接已关闭。",
+        "Awaiting verification": "待验证",
+        "Verifying with a test input…": "正在验证实际运行…",
+        "Verified · ready": "已验证 · 可使用",
+        "API key saved · verification required": "API Key 已保存 · 待验证",
+        "Key saved. Service verification is still required.": "密钥已保存，服务尚未验证通过。",
+        "Verify / Retry": "验证/重试",
+        "Connecting to the embedding service…": "正在连接向量服务…",
+        "Embedding service connection successful.": "向量服务连接成功。",
+        "Embedding configuration changed. Test the connection again.": "向量配置已更改，请重新测试连接。",
+        "Connecting to the speech service…": "正在连接语音服务…",
+        "Speech service connection successful.": "语音服务连接成功。",
         "Live connection failed. Check your network.": "实时服务连接失败，请检查网络。",
         "Microphone device configuration changed. Stop/start listening to use the current device.": "麦克风配置已改变，请重新开始监听以使用当前设备。",
         "Microphone permission denied. Enable LiveCopilot in System Settings → Privacy & Security → Microphone.": "未获麦克风权限，请在系统设置 → 隐私与安全性 → 麦克风中允许 LiveCopilot。",
@@ -189,7 +230,7 @@ enum L10n {
         "Academic Defense": "学术答辩",
         "Conversation": "对话",
         "Stop listening to change mode or scenario.": "请先停止监听，再更改模式或场景。",
-        "Automatic suggestions for meaningful questions": "识别完整问题后自动提供建议",
+        "Automatic suggestions for meaningful questions": "识别回应意图后自动提供建议",
         "Hide the floating window from meeting screen sharing and recording": "在会议共享与录制中隐藏悬浮窗",
         "Keep suggestions visible on your screen while excluding the floating window from capture. Settings and setup remain visible in shared content. Verify the result from another participant before use.": "悬浮窗在本机保持可见，并从捕获画面中排除。设置页和引导页仍会出现在共享画面中。使用前请从另一参会端确认效果。",
         "Menu bar": "菜单栏",
@@ -283,7 +324,7 @@ enum L10n {
         "Remove this service's saved key?": "移除此服务保存的密钥？",
         "Saved key removed.": "已移除保存的密钥。",
         "Saved in macOS Keychain.": "已安全保存到 macOS 钥匙串。",
-        "No credential available.": "尚无可用凭据。",
+        "No credential available.": "尚未配置密钥",
         "Credential available. No API request made.": "凭据已就绪；本次检查未调用 API。",
         "Mock providers — no credential needed.": "模拟模式无需真实凭据。",
         "Checking Keychain… Complete any macOS access prompt locally.": "正在读取钥匙串…请在本机完成 macOS 访问提示。",
@@ -331,7 +372,7 @@ enum L10n {
         "Hybrid": "混合知识",
         "KB Only": "仅知识库",
         "Knowledge database unavailable; strict mode cannot answer without evidence.": "知识库暂不可用；严格模式下无法在缺少证据时回答。",
-        "Apple ASR uses one language. For mixed Chinese/English, select Paraformer or GPT-Live in Services.": "Apple 语音识别使用单一语言。中英混合提问请在服务中选择 Paraformer 或 GPT-Live。",
+        "Apple ASR uses one language. For mixed Chinese/English, select another speech recognition engine in Services.": "Apple 语音识别使用单一语言。中英混合提问请在服务中选择其他语音识别引擎",
         "Sources · retrieved local evidence": "来源 · 本地检索证据",
         "First text": "首字耗时",
         "Copy": "复制",

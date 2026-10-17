@@ -1,4 +1,31 @@
 import Foundation
+
+/// Initial transfer size of the exact pinned assets, not extracted disk usage.
+/// Download mirrors serve these same checksum-verified files; cached assets may
+/// reduce the bytes transferred on a subsequent attempt.
+struct LayaDownloadSize: Decodable {
+    struct Asset: Decodable { let size: Int64 }
+    let python: Asset
+    let source: Asset
+    let wheels: [Asset]
+    let model: [Asset]
+    var totalBytes: Int64? {
+        guard !wheels.isEmpty, !model.isEmpty else { return nil }
+        var total: Int64 = 0
+        for asset in [python, source] + wheels + model {
+            guard asset.size > 0 else { return nil }
+            let sum = total.addingReportingOverflow(asset.size)
+            guard !sum.overflow else { return nil }
+            total = sum.partialValue
+        }
+        return total
+    }
+    static func load(resources: URL = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("LayaRuntime")) -> Self? {
+        guard let data = try? Data(contentsOf: resources.appendingPathComponent("pins.json")) else { return nil }
+        return try? JSONDecoder().decode(Self.self, from: data)
+    }
+}
+
 import Darwin
 import CoreFoundation
 
@@ -21,6 +48,7 @@ enum LayaRuntimeError: LocalizedError {
 final class LayaWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.livecopilot.laya-worker", qos: .userInitiated)
     private let lock = NSLock()
+    private var onExit: (@Sendable () -> Void)?
     private let executable: URL
     private let arguments: [String]
     private let transfer: (@Sendable (Double?, String) -> Void)?
@@ -41,10 +69,11 @@ final class LayaWorker: @unchecked Sendable {
          file: (@Sendable (Int, Int) -> Void)? = nil, status: (@Sendable (String, Double?) -> Void)? = nil) {
         self.executable = executable; self.arguments = arguments; self.status = status; self.transfer = transfer; self.file = file
     }
-    convenience init(installation: URL, resources: URL) {
+    convenience init(installation: URL, resources: URL, onExit: (@Sendable () -> Void)? = nil) {
         self.init(executable: installation.appendingPathComponent("venv/bin/python3"),
                   arguments: ["-I", "-B", resources.appendingPathComponent("worker.py").path,
                               "--installation", installation.path])
+        self.onExit = onExit
     }
     deinit { killOwnedProcess(); try? input?.close(); try? output?.close() }
 
@@ -140,6 +169,7 @@ final class LayaWorker: @unchecked Sendable {
         child.environment = ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(), "TMPDIR": NSTemporaryDirectory(),
                              "LANG": "en_US.UTF-8", "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
                              "HF_HUB_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1", "TOKENIZERS_PARALLELISM": "false"]
+        child.terminationHandler = { [onExit] _ in onExit?() }
         child.standardInput = stdin; child.standardOutput = stdout; child.standardError = FileHandle.nullDevice
         lock.lock()
         guard generation == epoch, !cancelled.contains(id) else { lock.unlock(); throw CancellationError() }

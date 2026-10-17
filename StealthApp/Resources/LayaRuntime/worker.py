@@ -11,13 +11,14 @@ import sys
 
 MAX_LINE = 131072
 MAX_TEXT = 65536
+CONTEXT_TOKENS = 1024
 QUESTIONS = {
     "needs_response": {
-        "type": "choice",
-        "instructions": "Classify the latest utterance by its conversational intent.",
+        "type": "noul",
+        "instructions": "Based on the recent conversation, does the latest speaker want the listener to respond now, with enough intent to begin a useful answer?",
         "criteria": {
-            "respond": "A direct question or request addressed to the listener, asking them to answer or explain.",
-            "wait": "A statement, acknowledgement, quoted or reported question, or unfinished thought.",
+            "true": "A new request or contextual follow-up has clear intent. Imperatives, ellipsis and unfinished grammar qualify when the main request is already understandable.",
+            "false": "No response is requested: narration, an answer, acknowledgement, mere quotation, withdrawal or explicit waiting. Also wait if essential intent is still unknown. Handled requests are background only.",
         },
     }
 }
@@ -37,7 +38,7 @@ def strict_loads(data):
 
 
 def checked_score(result):
-    value = result["answers"]["needs_response"]["probabilities"]["respond"]
+    value = result["answers"]["needs_response"]["noul"]
     if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
         raise ValueError("invalid_score")
     return float(value)
@@ -64,28 +65,70 @@ def suffix(tok, text, budget):
     return text
 
 
+def recent_context(context):
+    """Accept the app's structured turns; keep legacy diagnostic context readable."""
+    if not context.strip():
+        return "Room", []
+    if not context.lstrip().startswith("{"):
+        return "Room", [{"speaker": "Unknown", "text": context, "handled": False}]
+    value = strict_loads(context)
+    if not isinstance(value, dict) or set(value) != {"currentSpeaker", "recentTurns"}:
+        raise ValueError("invalid_context")
+    speaker, turns = value["currentSpeaker"], value["recentTurns"]
+    if not isinstance(speaker, str) or len(speaker) > 32 or not isinstance(turns, list) or len(turns) > 80:
+        raise ValueError("invalid_context")
+    for turn in turns:
+        if (not isinstance(turn, dict) or set(turn) != {"speaker", "text", "handled"}
+                or not isinstance(turn["speaker"], str) or len(turn["speaker"]) > 32
+                or not isinstance(turn["text"], str) or type(turn["handled"]) is not bool):
+            raise ValueError("invalid_context")
+    return speaker, turns
+
+
 def prepare_state(agent, text, context):
     from laya_mlx.common import build_prefix
     tok = agent.tok
-    text = text.replace(tok.mask_token, " ")
-    context = context.replace(tok.mask_token, " ")
+    latest = text.replace(tok.mask_token, " ")
+    speaker, turns = recent_context(context)
+    history = [{"speaker": t["speaker"], "text": t["text"].replace(tok.mask_token, " "),
+                "handled": t["handled"]} for t in turns]
+    turns = []
     internal = agent._to_internal(QUESTIONS["needs_response"])
-    prefix, markers = build_prefix(tok, internal, agent.cfg.get("head_max_len", 192))
-    maximum = agent.cfg.get("max_len", 512)
-    if type(maximum) is not int or maximum > 1024 or len(markers) != 2:
+    prefix, markers = build_prefix(tok, internal, agent.cfg.get("head_max_len", 256))
+    maximum = agent.cfg.get("max_len", 0)
+    if type(maximum) is not int or maximum != CONTEXT_TOKENS or len(markers) != 2:
         raise ValueError("invalid_budget")
-    room = maximum - len(prefix) - 1  # Includes question/options, CLS/SEP/MASK, final SEP.
-    # Classify only the current utterance. Duplicating it in a conversation field
-    # inflated confidence and made ordinary statements trigger in local smoke checks.
-    # Recent context remains attached to the downstream reasoning request in Swift.
-    latest = suffix(tok, text, max(1, room - 24))
-    state = json.dumps({"latest_utterance": latest}, ensure_ascii=False)
-    for _ in range(16):
+    room = maximum - len(prefix) - 1
+
+    def render():
+        return json.dumps({"previous_turns": turns, "current_speaker": speaker,
+                           "current_utterance": latest}, ensure_ascii=False, separators=(",", ":"))
+
+    state = render()
+    # Reserve the current turn first, then fill backwards from newest history.
+    # Do not repeatedly tokenize the entire (up to 60 KB) transcript to remove
+    # old turns. A long recent answer retains its tail for contextual follow-ups.
+    while len(token_ids(tok, state)) > room:
         count = len(token_ids(tok, state))
-        if count <= room:
-            break
-        latest = suffix(tok, latest, len(token_ids(tok, latest)) - (count - room + 8))
-        state = json.dumps({"latest_utterance": latest}, ensure_ascii=False)
+        budget = len(token_ids(tok, latest)) - (count - room) - 8
+        if budget <= 0:
+            raise ValueError("invalid_budget")
+        latest = suffix(tok, latest, budget)
+        state = render()
+    for turn in reversed(history):
+        turns.insert(0, turn)
+        state = render()
+        if len(token_ids(tok, state)) <= room:
+            continue
+        while len(token_ids(tok, state)) > room:
+            excess = len(token_ids(tok, state)) - room
+            budget = len(token_ids(tok, turns[0]["text"])) - excess - 8
+            if budget > 0:
+                turns[0]["text"] = suffix(tok, turns[0]["text"], budget)
+            else:
+                turns.pop(0)
+            state = render()
+        break
     expected = len(prefix) + len(token_ids(tok, state)) + 1
     items, _ = agent.prepare(state, QUESTIONS)
     if not latest.strip() or expected > maximum or len(items) != 1 or len(items[0]["ids"]) != expected:
@@ -133,6 +176,42 @@ def verify_installation(path):
     return receipt
 
 
+def model_path(installation, resources, installation_receipt):
+    """A signed local build may carry an independently pinned task checkpoint.
+
+    The downloaded upstream installation stays intact for rollback. An incomplete
+    or incompatible bundled checkpoint is an error, never a silent base fallback.
+    """
+    manifest = resources / "response-model.json"
+    model = resources / "ResponseModel"
+    if not manifest.exists() and not model.exists():
+        return installation / "model"
+    receipt = strict_loads(manifest.read_bytes())
+    question_sha = hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    required = {"model.safetensors", "rl_agent_config.json", "mlx_config.json",
+                "encoder/config.json", "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json"}
+    files = receipt.get("files")
+    if (model.is_symlink() or receipt.get("schema") != 1 or receipt.get("context_tokens") != CONTEXT_TOKENS
+            or receipt.get("question_sha256") != question_sha
+            or receipt.get("runtime_pin_id") != installation_receipt.get("pin_id")
+            or not isinstance(files, dict) or not required.issubset(files)):
+        raise ValueError("invalid_response_model")
+    root = model.resolve(strict=True)
+    for name, digest in files.items():
+        relative = Path(name)
+        file = model / relative
+        if (relative.is_absolute() or ".." in relative.parts or file.is_symlink()
+                or not file.is_file() or root not in file.resolve().parents):
+            raise ValueError("invalid_response_model")
+        h = hashlib.sha256()
+        with file.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1048576), b""):
+                h.update(chunk)
+        if h.hexdigest() != digest:
+            raise ValueError("invalid_response_model")
+    return model
+
+
 def emit(stream, payload):
     encoded = json.dumps(payload, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode() + b"\n"
     if len(encoded) > 4096:
@@ -161,10 +240,11 @@ def main():
         os.dup2(null.fileno(), 2)
     try:
         installation = Path(args.installation).resolve(strict=True)
-        verify_installation(installation)
+        receipt = verify_installation(installation)
         sys.path.insert(0, str(installation / "source"))
         import laya_mlx
-        agent = laya_mlx.load(installation / "model", dtype="float16")
+        model = model_path(installation, Path(__file__).resolve().parent, receipt)
+        agent = laya_mlx.load(model, dtype="float16")
         predict(agent, "The meeting starts at nine.", "")
         emit(channel, {"ready": True, "protocol": 1})
     except Exception:

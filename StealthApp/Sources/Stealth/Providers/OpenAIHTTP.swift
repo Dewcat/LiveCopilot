@@ -68,7 +68,7 @@ struct OpenAIEmbeddingProvider: EmbeddingProvider {
         let request = try OpenAIHTTP.request(path: "embeddings", key: key,
                                              body: ["model": model, "input": texts, "encoding_format": "float"])
         let (data, status) = try await transport.data(for: request)
-        try OpenAIHTTP.check(status)
+        try OpenAIHTTP.check(status, data: data)
         struct Response: Decodable {
             struct Item: Decodable { let index: Int; let embedding: [Float] }
             let data: [Item]
@@ -171,7 +171,9 @@ struct OpenAIReasoningProvider: ReasoningProvider {
                         case "response.output_text.delta", "response.refusal.delta":
                             if let delta = obj["delta"] as? String { hadText = hadText || !delta.isEmpty; continuation.yield(delta) }
                         case "response.completed": completed = true
-                        case "response.failed", "error": throw CopilotError.message("Reasoning request failed. Check model access, configuration and API limits, then retry.")
+                        case "response.failed", "error":
+                            let failure = (obj["response"] as? [String: Any])?["error"] as? [String: Any] ?? obj["error"] as? [String: Any] ?? obj
+                            throw ServiceHTTPFailure(status: 0, data: try? JSONSerialization.data(withJSONObject: failure))
                         case "response.incomplete": throw CopilotError.message("The answer was cut short. Partial text is retained; retry or choose a lower reasoning effort.")
                         default: break
                         }
@@ -186,6 +188,18 @@ struct OpenAIReasoningProvider: ReasoningProvider {
                 } catch { continuation.finish(throwing: error) }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+/// One short synthetic input verifies authentication, model access and a usable vector response.
+enum EmbeddingConnectionProbe {
+    static func run(provider: any EmbeddingProvider) async throws {
+        let vectors = try await provider.embed(["Connection test"])
+        try Task.checkCancellation()
+        guard vectors.count == 1, let vector = vectors.first, !vector.isEmpty,
+              vector.allSatisfy(\.isFinite) else {
+            throw CopilotError.message("OpenAI returned missing or incompatible embedding vectors.")
         }
     }
 }

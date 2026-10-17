@@ -27,25 +27,29 @@ struct OnboardingRecommendationView: View {
             }
             HStack(spacing: 12) {
                 choiceLabel(b("Recognition language", "语音识别语言"))
-                Picker(b("Recognition language", "语音识别语言"), selection: Binding(get: {
-                    OnboardingRecommendation.selectedScenario(coordinator)
-                }, set: { scene in update { OnboardingRecommendation.selectScenario(scene, coordinator: coordinator) } })) {
-                    ForEach(OnboardingSpeechScenario.allCases) { scene in Text(scene.title(coordinator.settings.language)).tag(scene) }
-                }.labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
-                    .disabled(!OnboardingRecommendation.canEdit(coordinator))
-                    .accessibilityLabel(b("Recognition language", "语音识别语言")).accessibilityIdentifier("onboarding-speech-scenario")
+                HStack(spacing: 2) {
+                    ForEach(OnboardingSpeechScenario.allCases) { scene in
+                        recommendationButton(scene.title(coordinator.settings.language), selected: OnboardingRecommendation.selectedScenario(coordinator) == scene) {
+                            coordinator.onboarding.state.speechScenario = scene
+                            OnboardingRecommendation.apply(coordinator)
+                        }
+                    }
+                }.padding(2).background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+                    .accessibilityIdentifier("onboarding-speech-scenario")
                 Spacer(minLength: 0)
             }
             HStack(spacing: 12) {
                 choiceLabel(b("Local knowledge base", "本地知识库"))
-                Picker(b("Local knowledge base", "本地知识库"), selection: Binding(get: {
-                    store.state.wantsKnowledge
-                }, set: { enabled in update { OnboardingRecommendation.selectKnowledge(enabled, coordinator: coordinator) } })) {
-                    Text(b("Needed", "需要")).tag(true)
-                    Text(b("Not needed", "不需要")).tag(false)
-                }.labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
-                    .disabled(!OnboardingRecommendation.canEdit(coordinator))
-                    .accessibilityLabel(b("Local knowledge base", "本地知识库")).accessibilityIdentifier("onboarding-recommended-knowledge")
+                HStack(spacing: 2) {
+                    ForEach([true, false], id: \.self) { enabled in
+                        recommendationButton(enabled ? b("Needed", "需要") : b("Not needed", "不需要"), selected: store.state.wantsKnowledge == enabled) {
+                            coordinator.onboarding.state.knowledgeRequested = enabled
+                            coordinator.onboarding.state.wantsKnowledge = enabled
+                            OnboardingRecommendation.apply(coordinator)
+                        }
+                    }
+                }.padding(2).background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 7))
+                    .accessibilityIdentifier("onboarding-recommended-knowledge")
                 Spacer(minLength: 0)
             }.padding(.top, 8)
             ZStack(alignment: .leading) {
@@ -60,13 +64,23 @@ struct OnboardingRecommendationView: View {
             .background(Color.accentColor.opacity(0.075), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.accentColor.opacity(0.15)))
     }
+    private func recommendationButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button { update { action() } } label: {
+            Text(title).font(.system(size: 12, weight: selected ? .semibold : .regular))
+                .padding(.horizontal, 13).padding(.vertical, 4)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        }.buttonStyle(.plain)
+            .disabled(!OnboardingRecommendation.canEdit(coordinator))
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
     private func choiceLabel(_ title: String) -> some View {
         Text(title).font(.system(size: 12))
             .frame(width: coordinator.settings.language.usesChinese ? 84 : 132, alignment: .leading)
     }
     private var recommendationDetail: String {
         if store.state.speechManuallySelected == true {
-            return b("Manual: ", "手动选择：") + engineName(coordinator.settings.listeningService) + b(" · kept when languages change", " · 切换语言时保留")
+            return b("Manual: ", "手动选择：") + engineName(coordinator.settings.listeningService) + b(" · tap a recommendation to restore", " · 点击上方选项恢复推荐")
         }
         return b("Recommended: ", "推荐：") + engineName(plan.speech) + " · " +
             (plan.speech == .openAI ? b("Online · usage fees", "需联网及 API 费用") : b("Local · low latency · no ASR fee", "本地 · 低延迟 · 无语音 API 费用"))
@@ -75,7 +89,7 @@ struct OnboardingRecommendationView: View {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22), action)
     }
     private func engineName(_ service: ListeningService) -> String {
-        switch service { case .paraformer: return "Paraformer"; case .apple: return "Apple"; case .openAI: return "OpenAI · GPT-Live" }
+        switch service { case .zipformer: return "Zipformer"; case .paraformer: return "Paraformer"; case .apple: return "Apple"; case .openAI: return "OpenAI · GPT-Live" }
     }
 }
 

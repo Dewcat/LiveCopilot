@@ -5,8 +5,8 @@ struct SettingsView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var hotkeys: HotkeyStore
     @ObservedObject var laya: LayaRuntimeManager
+    @ObservedObject var localModels: LocalModelManager
     @ObservedObject var updates: AppUpdateController
-    @State private var confirmLayaRemoval = false
     @State private var page = SettingsPage.general
     @State private var serviceRole = 0
     @State private var baseURL = ""
@@ -15,7 +15,8 @@ struct SettingsView: View {
     @State private var connectionMessage = ""
     @State private var showOpenAIKey = false
     @State private var shortcutConflict = false
-    init(coordinator: AppCoordinator) { self.coordinator = coordinator; hotkeys = coordinator.hotkeys; laya = coordinator.laya; updates = coordinator.updates }
+    @State private var professionalTermsDraft = ""
+    init(coordinator: AppCoordinator, initialPage: SettingsPage = .general, initialServiceRole: Int = 0) { _page = State(initialValue: initialPage); _serviceRole = State(initialValue: initialServiceRole); self.coordinator = coordinator; hotkeys = coordinator.hotkeys; laya = coordinator.laya; updates = coordinator.updates; localModels = coordinator.localModels }
     private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     private var locked: Bool { coordinator.isRunning || coordinator.isTransitioning }
@@ -43,7 +44,7 @@ struct SettingsView: View {
                 .background { Rectangle().fill(.thinMaterial).ignoresSafeArea(edges: .top) }
             Divider().ignoresSafeArea(edges: .top)
             VStack(alignment: .leading, spacing: 18) {
-                UpdateBanner(updates: updates, isBusy: coordinator.isRunning || coordinator.isTransitioning || coordinator.suggestion.isLoading)
+                UpdateBanner(updates: updates, isBusy: coordinator.isRunning || coordinator.isTransitioning || coordinator.answerIsRunning)
                 Text(t(page.rawValue)).font(.system(size: 24, weight: .semibold))
                 switch page {
                 case .general:
@@ -55,6 +56,7 @@ struct SettingsView: View {
                     }
                 case .services: ScrollView { services }
                 case .knowledge: knowledge
+                case .history: HistoryView(coordinator: coordinator)
                 case .shortcuts: shortcuts
                 case .about: ScrollView { about }
                 }
@@ -79,7 +81,6 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 24) {
             AppBrandTitle(iconSize: 64, titleSize: 28)
             Text(AppInfo.display).foregroundStyle(.secondary).textSelection(.enabled)
-            DisclosureGroup("诊断信息") { Text(AppInfo.diagnostic).font(.caption).textSelection(.enabled) }
             Text(b("A native macOS conversation copilot. Listen, find relevant knowledge, and get words you can say aloud.",
                    "原生 macOS 对话助手。听取对话、查找相关资料，生成可以直接说出口的回答。"))
                 .font(.body).fixedSize(horizontal: false, vertical: true)
@@ -106,8 +107,10 @@ struct SettingsView: View {
     }
     private var general: some View {
         VStack(alignment: .leading, spacing: 22) {
-            UpdateSettingsView(updates: updates, language: coordinator.settings.language)
-                .id("software-update-management")
+            if updates.hasUpdate {
+                UpdateSettingsView(updates: updates, language: coordinator.settings.language)
+                    .id("software-update-management")
+            }
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(b("Getting started", "新用户引导")).font(.headline)
@@ -146,9 +149,26 @@ struct SettingsView: View {
             } label: { Label(t("Language & appearance"), systemImage: "paintpalette") }
             SettingsSection {
                 VStack(alignment: .leading, spacing: 12) {
-                    Toggle(t("Fit window height to content"), isOn: $coordinator.settings.overlayAutoHeight)
+                    Toggle(b("Automatically fit answer height", "回答区自动伸缩"), isOn: $coordinator.settings.overlayAutoHeight)
                         .accessibilityIdentifier("overlay-auto-height")
-                    Text(t("Stay compact when empty, grow with captions and answers, then scroll at the screen limit. Drag a vertical edge to switch to manual sizing.")).font(.caption).foregroundStyle(.secondary)
+                    Text(b("Fit the window to answer content; longer conversations scroll. The voice and input areas stay fixed. Drag vertically to use a manual height.", "窗口随回答内容伸缩，长会话独立滚动；语音区和输入区保持固定。手动拖动高度后改为手动尺寸。")).font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 7) {
+                Toggle(isOn: $coordinator.settings.excludeOverlayFromCapture) {
+                    Label(t("Hide the floating window from meeting screen sharing and recording"), systemImage: "eye.slash").font(.headline)
+                }.accessibilityIdentifier("exclude-overlay-capture")
+                Text(t("Keep suggestions visible on your screen while excluding the floating window from capture. Settings and setup remain visible in shared content. Verify the result from another participant before use."))
+                    .font(.caption).foregroundStyle(.secondary)
+                if coordinator.settings.excludeOverlayFromCapture {
+                    switch coordinator.overlayCaptureProtection {
+                    case .failed:
+                        Label(b("Capture protection is unavailable on this system. The floating window may be recorded.",
+                                "当前系统未能启用录制保护，悬浮窗可能被录入。"), systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    default: EmptyView()
+                    }
+                }
+            }
+                    Divider()
                     Toggle(b("Automatically dock to edge", "自动贴边"), isOn: $coordinator.settings.overlayEdgeHide)
                         .accessibilityIdentifier("overlay-edge-hide")
                     Text(b("When enabled, the window tucks into the right edge and appears on hover. Turn off to drag its header anywhere on your desktop.", "开启后，悬浮窗自动贴靠右侧边缘，悬停时展开。关闭后，可拖动窗口顶部到桌面任意位置。")).font(.caption).foregroundStyle(.secondary)
@@ -172,11 +192,11 @@ struct SettingsView: View {
                     Picker(t("Scenario"), selection: $coordinator.settings.scenario) {
                         ForEach(ScenarioProfile.allCases) { Text(t($0.rawValue)).tag($0) }
                     }.disabled(locked)
-                    Text(b("Interview: personal experience and talking points. Meeting: decisions and next actions. Defense: methods, evidence and limitations. These change answer instructions and automatic-suggestion cooldown, not ASR accuracy.", "面试：个人经历与表达要点；会议：决策与后续行动；答辩：方法、证据与局限。场景改变回答提示词和自动建议冷却时间，不改变语音识别准确率。")).font(.caption).foregroundStyle(.secondary)
+                    Text(b("Interview: personal experience and talking points. Meeting: decisions and next actions. Defense: methods, evidence and limitations. These change answer instructions, not ASR accuracy.", "面试：个人经历与表达要点；会议：决策与后续行动；答辩：方法、证据与局限。场景改变回答提示词，不改变语音识别准确率。")).font(.caption).foregroundStyle(.secondary)
                     if locked { Text(t("Stop listening to change mode or scenario.")).font(.caption).foregroundStyle(.secondary) }
                     Toggle(t("Automatic suggestions for meaningful questions"), isOn: $coordinator.settings.automaticSuggestions)
                         .accessibilityIdentifier("automatic-suggestions")
-                    Button(b("View automatic analysis in Live services", "在实时服务中查看自动分析")) { page = .services; serviceRole = 0 }
+                    Button(b("View real-time answer triggers", "查看实时回答触发")) { page = .services; serviceRole = 1 }
                 }.padding(10)
             } label: { Label(t("Conversation"), systemImage: "waveform") }
             SettingsSection {
@@ -195,185 +215,250 @@ struct SettingsView: View {
                 }.padding(10)
             } label: { Label(t("Conversation tools"), systemImage: "list.bullet.rectangle") }
             CapturePermissionCard(language: coordinator.settings.language)
-            VStack(alignment: .leading, spacing: 7) {
-                Toggle(isOn: $coordinator.settings.excludeOverlayFromCapture) {
-                    Label(t("Hide the floating window from meeting screen sharing and recording"), systemImage: "eye.slash").font(.headline)
-                }.accessibilityIdentifier("exclude-overlay-capture")
-                Text(t("Keep suggestions visible on your screen while excluding the floating window from capture. Settings and setup remain visible in shared content. Verify the result from another participant before use."))
-                    .font(.caption).foregroundStyle(.secondary)
-                if coordinator.settings.excludeOverlayFromCapture {
-                    switch coordinator.overlayCaptureProtection {
-                    case .failed:
-                        Label(b("Capture protection is unavailable on this system. The floating window may be recorded.",
-                                "当前系统未能启用录制保护，悬浮窗可能被录入。"), systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange)
-                    default: EmptyView()
-                    }
-                }
-            }
+
         }.padding(.bottom, 4)
     }
     private var automaticTriggerSettings: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Jev Mode")
-                .font(.custom(AppBrandTitle.fontName, size: 24))
-                .accessibilityAddTraits(.isHeader)
-            Text(b("With automatic suggestions enabled, Laya decides when completed local speech needs analysis.", "开启自动建议后，Laya 判断已完成的本地语音是否需要分析。"))
-                .font(.caption).foregroundStyle(.secondary)
-            GroupBox {
-                VStack(alignment: .leading, spacing: 12) {
-                Text(b("Laya evaluates streaming text locally, then requests an answer after the other speaker finishes and pauses. It uses your selected analysis model; that model may charge API fees. In-person mode cannot distinguish you from other speakers.", "Laya 在本地持续判断流式文字，等对方说完并停顿后，触发你选择的分析模型生成回答；分析模型仍可能产生 API 费用。现场模式无法区分自己与他人。"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Text(b("Downloaded separately · local/free · about 678 MB for model files, plus runtime. The app includes the integration, not the model weights. Laya decides when to request an answer; it does not transcribe audio or generate the answer itself.", "额外下载 · 本地/免费 · 模型文件约 678 MB，另需运行环境。软件包包含接入代码，不包含模型权重。Laya 判断何时需要生成回答，本身不负责语音识别或撰写回答。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                Text(b("Downloads automatically try available sources, including mainland mirrors. If retries fail, try another network.", "自动尝试可用下载线路（含国内镜像），无需选择下载源。如果重试仍失败，可尝试切换网络。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Text(b("Trigger threshold", "触发阈值"))
-                    Slider(value: $coordinator.settings.layaThreshold, in: 0.5...0.99, step: 0.01)
-                        .accessibilityIdentifier("laya-threshold")
-                    Text(coordinator.settings.layaThreshold, format: .number.precision(.fractionLength(2)))
-                        .monospacedDigit().frame(width: 42)
-                }
-                Text(b("Higher values are more conservative. Start at 0.80; this score is not a measured accuracy rate. Manual generation is always available.", "阈值越高越保守，建议先用 0.80；该分数不代表实测准确率。任何时候都可手动生成回答。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Label(layaStateTitle, systemImage: laya.isReady ? "checkmark.circle.fill" : "cpu")
-                        .accessibilityIdentifier("laya-runtime-status")
-                    Spacer()
-                    if laya.isBusy {
-                        Button(b("Cancel", "取消")) { coordinator.cancelLayaRuntime() }
-                    } else if laya.isInstalled {
-                        Button(b("Load / Retry", "加载 / 重试")) { laya.prepare() }.disabled(laya.isReady)
-                    } else {
-                        Button(b("Download and prepare", "下载并准备")) { laya.install() }
-                            .disabled(laya.state == .unsupported)
-                            .accessibilityIdentifier("install-laya")
-                    }
-                }
-                Button(b("Delete local files…", "删除本地文件…"), role: .destructive) { confirmLayaRemoval = true }
-                    .disabled(laya.isBusy || locked)
-                    .confirmationDialog(b("Delete Laya model, runtime and download cache?", "删除 Laya 模型、运行环境和下载缓存？"), isPresented: $confirmLayaRemoval) {
-                        Button(b("Delete", "删除"), role: .destructive) { if !locked { laya.removeDownloadedFiles() } }
-                    } message: { Text(b("You will need to download again. Settings and knowledge documents are retained.", "下次使用需要重新下载；保留设置与知识库资料。")) }
-                if laya.isBusy {
-                    if !laya.transferStatus.isEmpty {
-                        if let value = laya.transferProgress { ProgressView(value: value) }
-                        else { ProgressView().progressViewStyle(.linear) }
-                        Text(laya.transferStatus).font(.caption.monospacedDigit())
-                    } else if let progress = laya.progress { ProgressView(value: progress) }
-                    else { ProgressView().progressViewStyle(.linear) }
-                }
-                Text(b("Experimental: may misread quoted questions or unfinished speech. Keep manual generation available and adjust the threshold for your conversations.", "实验性功能：可能误判转述的问题或未说完的话。可按实际对话调整阈值，并随时使用手动生成。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                if !laya.message.isEmpty { Text(t(laya.message)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-                Text(b("Requires Apple Silicon and macOS 14+. Download once; detection runs offline without an API key. If unavailable, automatic Laya triggering pauses without switching to a paid service.", "需要 Apple Silicon 和 macOS 14+。首次下载后离线判断，无需 API Key；不可用时暂停 Laya 自动触发，不会悄悄改用付费服务。"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            } label: { Label(b("Laya · local trigger model", "Laya · 本地触发模型"), systemImage: "bolt.circle") }
-        }
-    }
-    private var layaStateTitle: String {
-        switch laya.state {
-        case .unsupported: return b("Laya unavailable on this Mac", "此 Mac 不支持 Laya")
-        case .notInstalled: return b("Laya not downloaded", "Laya 尚未下载")
-        case .installed: return b("Laya downloaded", "Laya 已下载")
-        case .installing:
-            let title = b("Preparing local runtime…", "正在准备本地运行环境…")
-            guard let index = laya.downloadFileIndex, let total = laya.downloadFileTotal else { return title }
-            return title + " · " + b("Downloading", "正在下载") + " \(index)/\(total)"
-        case .loading: return b("Loading Laya…", "正在加载 Laya…")
-        case .ready: return b("Laya ready · local", "Laya 已就绪 · 本地")
-        case .failed: return b("Laya needs attention", "Laya 需要处理")
-        }
+        JevSettingsView(coordinator: coordinator, laya: laya)
     }
     private var services: some View {
         VStack(alignment: .leading, spacing: 20) {
             Picker(t("Service role"), selection: $serviceRole) {
-                Text(t("Live service")).tag(0)
-                Text(t("Knowledge service")).tag(1)
-                Text(t("Analysis service")).tag(2)
+                Text(b("Speech recognition", "语音识别")).tag(0)
+                Text(b("Answer triggers", "实时回答触发")).tag(1)
+                Text(b("Knowledge base", "知识库")).tag(2)
+                Text(b("Analysis & answers", "分析与回答")).tag(3)
             }.pickerStyle(.segmented).accessibilityIdentifier("service-role")
-            if serviceRole == 2 { analysisService } else if serviceRole == 1 { embeddingService } else { liveService }
+            switch serviceRole {
+            case 1: automaticTriggerSettings
+            case 2: embeddingService
+            case 3: analysisService
+            default: liveService
+            }
         }.padding(.bottom, 4)
     }
     private var liveService: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Picker(t("Listening provider"), selection: $coordinator.settings.listeningService) {
-                ForEach(ListeningService.allCases) { service in
-                    Text(service == .openAI && coordinator.settings.liveModel == "gpt-live-1"
-                         ? b("GPT-Live-1 · $0.05/min/session, cloud", "GPT-Live-1 · $0.05/分钟/路，云端")
-                         : ServiceGuide.listening(service, language: coordinator.settings.language)).tag(service)
-                }
-            }.disabled(locked).accessibilityIdentifier("listening-provider")
-            SpeechSelectionGuide(language: coordinator.settings.language)
-            if coordinator.settings.listeningService == .apple {
-                Text(b("SpeechAnalyzer + SpeechTranscriber: offline streaming captions with revisable previews. Apple manages language downloads and inference. Requires macOS 26 and supported hardware; choose Mandarin or English before listening. This option does not automatically switch languages.", "SpeechAnalyzer + SpeechTranscriber：离线流式转写，预览文字会修正。语言模型与推理由 macOS 管理，需要 macOS 26 和受支持硬件；开始前选择普通话或英语，不自动切换语言。")).font(.callout).foregroundStyle(.secondary)
-                AppleSpeechCard(manager: coordinator.appleSpeech, language: $coordinator.settings.appleSpeechLanguage, interfaceLanguage: coordinator.settings.language, locked: locked)
-                Text(b("Automatic analysis uses the local Laya trigger below. Recognition speed and accuracy depend on your language, microphone and vocabulary.", "自动分析使用下方的本地 Laya 判断。识别速度和准确率取决于语言、麦克风及术语。")).font(.caption).foregroundStyle(.secondary)
-            } else if let kind = coordinator.settings.listeningService.localModel {
-                Text(t("Audio stays on this Mac. Chinese and English captions update while you speak. Preview text can change; completed sentences are used for automatic suggestions.")).font(.callout).foregroundStyle(.secondary)
-                LocalModelCard(manager: coordinator.localModels, kind: kind, language: coordinator.settings.language, locked: locked || coordinator.isIndexing || coordinator.suggestion.isLoading, remove: { coordinator.removeLocalModel(kind) })
-                Text(b("English terminology can be misrecognized. For English-heavy conversations, compare Apple English or GPT-Live-1 on your own audio.", "英文术语可能误识别。英文较多时，可用自己的音频对比 Apple 英语识别或 GPT-Live-1。")).font(.caption).foregroundStyle(.secondary)
-                Text(b("Automatic analysis uses the local Laya trigger below. You can always generate an answer manually.", "自动分析使用下方的本地 Laya 判断，也可随时手动生成回答。")).font(.caption).foregroundStyle(.secondary)
-                localCost
-            } else {
-                HStack(spacing: 10) {
-                    if let url = Bundle.main.url(forResource: "OpenAI-Logomark", withExtension: "svg"),
-                       let logo = NSImage(contentsOf: url) {
-                        Image(nsImage: logo)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 22, height: 22)
-                            .frame(width: 30, height: 30)
-                            .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
-                            .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 14) {
+            liveSection(b("Speech recognition engine", "语音识别引擎")) {
+                HStack(spacing: 20) {
+                    Picker(b("Engine", "当前引擎"), selection: $coordinator.settings.listeningService) {
+                        Text("Zipformer · " + b("Terminology", "术语增强")).tag(ListeningService.zipformer)
+                        Text("Paraformer").tag(ListeningService.paraformer)
+                        Text(b("Apple local speech recognition", "Apple 本机语音识别")).tag(ListeningService.apple)
+                        Text("OpenAI · GPT-Live-1").tag(ListeningService.openAI)
+                    }.disabled(locked).accessibilityIdentifier("listening-provider")
+                    if coordinator.settings.listeningService == .apple {
+                        Picker(b("Recognition language", "识别语言"), selection: $coordinator.settings.appleSpeechLanguage) {
+                            Text(b("Mandarin Chinese", "普通话")).tag(AppleSpeechLanguage.chinese)
+                            Text(b("English (US)", "英语（美国）")).tag(AppleSpeechLanguage.english)
+                        }.disabled(locked || coordinator.appleSpeech.busy).accessibilityIdentifier("apple-speech-language")
+                    } else {
+                        LiveSpeechLanguagePicker(language: $coordinator.settings.liveSpeechLanguage,
+                                                 interfaceLanguage: coordinator.settings.language, compact: true).disabled(locked)
                     }
-                    Text("OpenAI")
-                }.font(.title3.bold()).accessibilityElement(children: .combine)
-                Text(t("Audio is sent to OpenAI Live for transcription and semantic question detection.")).font(.callout).foregroundStyle(.secondary)
-                LiveSpeechLanguagePicker(language: $coordinator.settings.liveSpeechLanguage,
-                                         interfaceLanguage: coordinator.settings.language).disabled(locked)
-                Text(b("GPT-Live-1 decides when to delegate a complete question for analysis. Laya settings apply only to local speech recognition.", "GPT-Live-1 自行判断何时把完整问题委托给分析模型；Laya 设置仅用于本地语音识别。"))
-                    .font(.caption).foregroundStyle(.secondary)
-                CredentialEditor(coordinator: coordinator, analysis: false)
-                modelField("Live model", value: $coordinator.settings.liveModel).disabled(locked)
-                priceNote(ServiceGuide.livePrice(coordinator.settings.liveModel, language: coordinator.settings.language), url: "https://developers.openai.com/api/docs/models/gpt-live-1")
+                }
+                Text(liveEngineSummary).font(.callout).foregroundStyle(.secondary)
+                if coordinator.settings.listeningService == .openAI {
+                    Text(ServiceGuide.livePrice(coordinator.settings.liveModel, language: coordinator.settings.language)).font(.caption).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 8) {
+                    ForEach(liveEngineTags, id: \.self) { label in
+                        Text(label).font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.05), in: Capsule())
+                    }
+                }
+                if coordinator.settings.listeningService == .apple {
+                    Text(b("Only the selected language is recognized. Use Zipformer for mixed Chinese and English.", "仅识别所选语言，不自动切换中英文；混合语言建议使用 Zipformer。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if coordinator.settings.listeningService == .openAI {
+                    Text(b("Language options guide recognition without restricting the languages recognized.", "语言选项仅影响识别偏好，不限制实际识别语言。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(b("Automatically detects complete questions and triggers answer generation.", "自动识别完整提问，触发分析模型生成回答。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
-            Divider()
-            if coordinator.settings.listeningService.isLocal { automaticTriggerSettings }
+            if coordinator.settings.listeningService == .zipformer {
+                professionalTermsSection
+            }
+            liveSection(b("Model connection and download management", "模型连接与下载管理")) {
+                if coordinator.settings.listeningService == .apple {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(b("Apple speech recognition model", "Apple 语音识别模型")).font(.headline)
+                                Text(b("Apple · Single language", "Apple · 单语言")).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Label(L10n.text(coordinator.appleSpeech.message, language: coordinator.settings.language),
+                                  systemImage: coordinator.appleSpeech.installed ? "checkmark.circle.fill" : "arrow.down.circle")
+                                .font(.caption).foregroundStyle(coordinator.appleSpeech.installed ? Color.green : Color.secondary)
+                        }
+                        HStack(spacing: 12) {
+                            Button(b("Download / Retry", "下载/重试")) { coordinator.appleSpeech.install(coordinator.settings.appleSpeechLanguage) }
+                                .disabled(locked || coordinator.appleSpeech.busy || coordinator.appleSpeech.installed || !coordinator.appleSpeech.available)
+                            if coordinator.appleSpeech.busy {
+                                ProgressView().controlSize(.small)
+                                Button(t("Cancel")) { coordinator.appleSpeech.cancel() }
+                            }
+                            Spacer()
+                            Button(b("Check again", "重新检测")) { Task { await coordinator.appleSpeech.refresh(coordinator.settings.appleSpeechLanguage) } }
+                                .disabled(coordinator.appleSpeech.busy)
+                        }
+                    }
+                } else if let kind = coordinator.settings.listeningService.localModel {
+                    LocalModelCard(compact: true, manager: coordinator.localModels, kind: kind, language: coordinator.settings.language,
+                                   locked: locked || coordinator.isIndexing || coordinator.answerIsRunning,
+                                   remove: { coordinator.removeLocalModel(kind) })
+                } else {
+                    CredentialEditor(coordinator: coordinator, analysis: false, liveLayout: true)
+                    DisclosureGroup(b("Advanced model settings", "高级模型设置")) {
+                        modelField("Live model", value: $coordinator.settings.liveModel).disabled(locked).padding(.top, 8)
+                    }
+                }
+            }
+        }.task(id: coordinator.settings.appleSpeechLanguage) {
+            if coordinator.settings.listeningService == .apple { await coordinator.appleSpeech.refresh(coordinator.settings.appleSpeechLanguage) }
+        }.task(id: coordinator.settings.listeningService) {
+            if coordinator.settings.listeningService == .apple { await coordinator.appleSpeech.refresh(coordinator.settings.appleSpeechLanguage) }
+        }
+    }
+    private var professionalTermsSection: some View {
+        liveSection(b("Professional terminology", "专业术语识别")) {
+            Toggle(b("Enable terminology enhancement", "启用术语增强"), isOn: Binding(
+                get: { coordinator.settings.listeningService == .zipformer && coordinator.settings.professionalTermsEnabled },
+                set: { coordinator.settings.professionalTermsEnabled = $0 }))
+                .disabled(!ProfessionalTerms.supportsNativeEnhancement(coordinator.settings.listeningService))
+            if coordinator.settings.listeningService == .zipformer {
+                Text(b("Add technical terms to guide recognition. Edits apply at the next speech segment; results may vary.", "添加专业词汇帮助识别；修改从下一段语音起生效，识别效果因发音而异。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                if coordinator.localModels.installed.contains(.terminologySpeech), coordinator.settings.professionalTermsEnabled {
+                    Text("\(coordinator.activeProfessionalTerms.count) " + b("active terms", "条可用于识别"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                Text(b("Select Zipformer to use terminology enhancement. Your vocabulary is saved locally.", "选择 Zipformer 引擎即可使用术语增强。词表会保存在本机。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if coordinator.settings.professionalTermsEnabled {
+                HStack {
+                    Text(b("Custom terms", "自定义热词")).font(.callout)
+                    Spacer()
+                    Text("\(coordinator.settings.professionalTerms.count) " + b("saved terms", "个词条 · 已保存"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                TextEditor(text: $professionalTermsDraft)
+                    .font(.body).frame(height: 120).scrollContentBackground(.hidden)
+                    .padding(8).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.1)))
+                    .accessibilityLabel(b("One professional term per line", "每行一个专业术语"))
+                Text(b("One term per line. Chinese, English, mixed-language terms and phrases with spaces are supported. Blank and duplicate entries are removed when saved.", "每行一个术语，支持中文、英文、中英混合及含空格的词组。保存时自动忽略空行和重复项。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(b("Up to 100 saved entries are considered, each up to 100 characters. Punctuation separates words; unsupported characters are skipped.", "为保持实时性，最多处理前 100 条，每条不超过 100 字。标点按词间空格处理；含模型不支持字符的词条不应用。"))
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button(b("Restore examples", "恢复示例")) { professionalTermsDraft = ProfessionalTerms.examples.joined(separator: "\n") }
+                    Button(b("Copy terms", "复制热词列表")) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(coordinator.settings.professionalTerms.joined(separator: "\n"), forType: .string)
+                    }
+                }
+            }
+        }
+        .onAppear { professionalTermsDraft = coordinator.settings.professionalTerms.joined(separator: "\n") }
+        .onChange(of: professionalTermsDraft) { _, value in coordinator.settings.professionalTerms = ProfessionalTerms.clean(value) }
+    }
+    private func liveSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.headline)
+            content()
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+    }
+    private var liveEngineSummary: String {
+        switch coordinator.settings.listeningService {
+        case .apple: return b("Built-in macOS recognition, transcribing Chinese or English offline.", "使用 macOS 内置识别能力，离线实时转写中文或英文。")
+        case .zipformer: return b("Local Chinese/English streaming with native terminology enhancement, no API fees.", "本地中英双语实时识别，支持原生术语增强，无 API 费用。")
+        case .paraformer: return b("Transcribes mixed Chinese and English locally, without API fees.", "支持中英文混合语音转写，本地离线运行，无需 API 费用。")
+        case .openAI: return b("Cloud transcription with intelligent detection of complete questions.", "云端实时转写，并智能判断提问是否完整。")
+        }
+    }
+    private var liveEngineTags: [String] {
+        switch coordinator.settings.listeningService {
+        case .apple: return [b("Local", "本地"), b("Single language", "单语识别"), b("No API fees", "无 API 费用")]
+        case .zipformer: return [b("Local", "本地"), b("Chinese + English", "中英混合"), b("Terminology", "术语增强"), b("No API fees", "无 API 费用")]
+        case .paraformer: return [b("Local", "本地"), b("Chinese + English", "中英混合"), b("No API fees", "无 API 费用")]
+        case .openAI: return [b("Cloud", "云端"), b("Multilingual", "多语言"), b("Usage-based", "按量计费")]
         }
     }
     private var embeddingService: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Picker(t("Embedding provider"), selection: $coordinator.settings.embeddingService) {
-                ForEach(EmbeddingService.allCases) { service in
-                    Text(t(service.label) + (service == .local ? b(" · local/free", " · 本地/免费") : b(" · billed per token", " · 按 token 计费"))).tag(service)
+            liveSection(b("Indexing model", "索引模型")) {
+                Picker(t("Embedding provider"), selection: $coordinator.settings.embeddingService) {
+                    ForEach(EmbeddingService.allCases) { service in
+                        Text(t(service.label) + (service == .local ? b(" · local/free", " · 本地/免费") : b(" · billed per token", " · 按 token 计费"))).tag(service)
+                    }
+                }.disabled(coordinator.isIndexing || coordinator.answerIsRunning).accessibilityIdentifier("embedding-provider")
+                if coordinator.settings.embeddingService == .openAI {
+                    modelField("Embedding model", value: $coordinator.settings.embeddingModel).disabled(coordinator.isIndexing)
+                    Text(ServiceGuide.embeddingPrice(coordinator.settings.embeddingModel, language: coordinator.settings.language, compact: true))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(b("Runs locally · No API fees", "本地运行 · 无 API 费用")).font(.caption).foregroundStyle(.secondary)
                 }
-            }.disabled(coordinator.isIndexing || coordinator.suggestion.isLoading).accessibilityIdentifier("embedding-provider")
+            }
             if coordinator.settings.embeddingService == .local {
                 Text(t("Document and query embeddings run on this Mac. No OpenAI key or network is needed after downloading the model.")).font(.callout).foregroundStyle(.secondary)
-                LocalModelCard(manager: coordinator.localModels, kind: .embedding, language: coordinator.settings.language, locked: locked || coordinator.isIndexing || coordinator.suggestion.isLoading, remove: { coordinator.removeLocalModel(.embedding) })
+                LocalModelCard(manager: coordinator.localModels, kind: .embedding, language: coordinator.settings.language, locked: locked || coordinator.isIndexing || coordinator.answerIsRunning, remove: { coordinator.removeLocalModel(.embedding) })
             } else {
                 Text(t("Extracted document text and retrieval queries are sent to OpenAI Embeddings using the shared OpenAI credential.")).font(.callout).foregroundStyle(.secondary)
-                CredentialEditor(coordinator: coordinator, analysis: false)
-                modelField("Embedding model", value: $coordinator.settings.embeddingModel).disabled(coordinator.isIndexing)
-                Text(b("Small: lower cost. Large: larger vectors and higher cost. Validate retrieval on your own documents; BGE-M3 runs locally without an API fee.", "Small：费用更低；Large：向量更大、费用更高。检索效果需用自己的文档验证；BGE-M3 在本地运行，无 API 调用费。")).font(.caption).foregroundStyle(.secondary)
-                priceNote(ServiceGuide.embeddingPrice(coordinator.settings.embeddingModel, language: coordinator.settings.language), url: "https://developers.openai.com/api/docs/pricing")
+                CredentialEditor(coordinator: coordinator, analysis: false, embeddingLayout: true)
+            }
+            if coordinator.knowledgeNeedsReindex {
+                HStack(spacing: 12) {
+                    Label(b("The indexing model has changed. Rebuild existing documents' indexes to use semantic retrieval with this model.", "索引模型已切换，请重新建立已有文档的索引，才能使用当前模型进行语义检索。"), systemImage: "arrow.triangle.2.circlepath")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(b("Rebuild indexes", "重新建立索引")) { coordinator.reindexAll() }
+                        .disabled(!knowledgeConfigured || coordinator.isIndexing)
+                }
             }
             if coordinator.settings.embeddingService == .local { localCost }
             Text(t("After changing the embedding model, re-index documents. Keyword retrieval remains available for older indexes.")).font(.caption).foregroundStyle(.secondary)
             Button(t("Open knowledge library")) { page = .knowledge }
         }
+        .task(id: coordinator.settings.selectedEmbeddingIdentity) { await coordinator.verifyEmbeddingIfNeeded() }
+        .onChange(of: coordinator.hasAPIKey) { _, available in
+            if available { Task { await coordinator.verifyEmbeddingIfNeeded() } }
+        }
     }
     private var analysisService: some View {
         VStack(alignment: .leading, spacing: 18) {
             OnboardingAnswerConfiguration(coordinator: coordinator)
+            SettingsSection {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle(b("Chinese / English sentence pairs", "中英逐句对照"), isOn: $coordinator.settings.bilingualAnswers)
+                        .accessibilityIdentifier("bilingual-answers")
+                    Text(b("Each Chinese sentence is followed by its English equivalent. Applies to manual and automatic answers and overrides single-language output.", "每句中文后紧接对应英文。对手动和自动回答生效，优先于单语设置。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    Text(b("Additional answer instructions", "个性化额外提示词")).font(.headline)
+                    TextEditor(text: Binding(get: { coordinator.settings.additionalAnswerInstructions }, set: { coordinator.settings.additionalAnswerInstructions = String($0.prefix(4000)) }))
+                        .font(.body).frame(height: 100).padding(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.25)))
+                        .accessibilityLabel(b("Additional answer instructions", "个性化额外提示词"))
+                        .accessibilityIdentifier("additional-answer-instructions")
+                    HStack {
+                        Text(b("Example: Use short sentences and explain technical terms. Sent to your analysis service with each request.", "例如：用短句回答，并解释专业术语。每次请求会随问题发送给分析服务。"))
+                        Spacer()
+                        Text("\(coordinator.settings.additionalAnswerInstructions.count)/4000").monospacedDigit()
+                    }.font(.caption).foregroundStyle(.secondary)
+                }.padding(10)
+            } label: { Text(b("Answer style", "回答风格")) }
             if (try? coordinator.settings.analysisCredentialReference()) != nil {
-                CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI)
+                CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI, analysisLayout: true)
                     .id(try? coordinator.settings.analysisCredentialReference().account)
             }
-            Text(t("Changes apply to the next answer. Existing knowledge vectors do not need re-indexing when you change only the analysis model.")).font(.caption).foregroundStyle(.secondary)
         }
     }
     private var customService: some View {
@@ -389,7 +474,7 @@ struct SettingsView: View {
                 }.padding(10)
             } label: { Text(t("Connection")) }
             if (try? coordinator.settings.compatibleEndpoint()) != nil {
-                CredentialEditor(coordinator: coordinator, analysis: true)
+                CredentialEditor(coordinator: coordinator, analysis: true, analysisLayout: true)
                     .id(try? coordinator.settings.analysisCredentialReference().account)
             } else {
                 Text(t("Save the service address before configuring its key.")).font(.caption).foregroundStyle(.secondary)
@@ -448,11 +533,35 @@ struct SettingsView: View {
             TextField(t(title), text: value, prompt: Text(prompt ?? t(title))).textFieldStyle(.roundedBorder)
         }
     }
+    private var knowledgeConfigured: Bool {
+        coordinator.settings.embeddingService == .local
+            ? localModels.embeddingVerification.isReady
+            : coordinator.hasAPIKey && coordinator.embeddingVerification.isReady
+    }
     private var knowledge: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !knowledgeConfigured {
+                HStack(spacing: 12) {
+                    Label(b("Knowledge indexing is not verified. Configure a local model or API Key and complete verification to continue.", "知识库索引服务尚未验证通过。请前往配置，下载本地模型或保存 API Key 并完成验证。"), systemImage: "info.circle")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button(b("Configure", "去配置")) { serviceRole = 2; page = .services }
+                }.padding(14).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+            }
+            knowledgeContent
+                .disabled(!knowledgeConfigured)
+                .allowsHitTesting(knowledgeConfigured)
+                .saturation(knowledgeConfigured ? 1 : 0)
+                .opacity(knowledgeConfigured ? 1 : 0.45)
+        }.task { if coordinator.settings.embeddingService == .local { await localModels.verifyEmbeddingIfNeeded() } }
+    }
+    private var knowledgeContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(t("Local knowledge base")).font(.headline)
-            KnowledgeImportDropZone(language: coordinator.settings.language, isIndexing: coordinator.isIndexing,
-                                    selectDocuments: selectDocuments, importDocuments: coordinator.importDocuments,
+            KnowledgeImportDropZone(language: coordinator.settings.language, isIndexing: coordinator.isIndexing || !knowledgeConfigured,
+                                    selectDocuments: selectDocuments, importDocuments: { urls in
+                                        guard knowledgeConfigured else { return }; coordinator.importDocuments(urls)
+                                    },
                                     reportError: { coordinator.knowledgeMessage = $0 })
             Text(t(coordinator.settings.embeddingService == .local
                    ? "PDF, Markdown, TXT and DOCX · parsing, embeddings and retrieval stay on this Mac. Answer generation sends selected excerpts to your analysis service."
@@ -503,10 +612,11 @@ struct SettingsView: View {
         }
     }
     private func selectDocuments() {
+        guard knowledgeConfigured else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = DocumentParser.supportedExtensions.compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true; panel.canChooseDirectories = false
-        panel.begin { response in if response == .OK { coordinator.importDocuments(panel.urls) } }
+        panel.begin { response in if response == .OK && knowledgeConfigured { coordinator.importDocuments(panel.urls) } }
     }
     private var shortcuts: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -552,14 +662,15 @@ struct SettingsView: View {
     }
 }
 
-private enum SettingsPage: String, CaseIterable, Identifiable {
-    case general = "General", services = "Services", knowledge = "Knowledge", shortcuts = "Shortcuts", about = "About"
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case general = "General", services = "Services", knowledge = "Knowledge", history = "History", shortcuts = "Shortcuts", about = "About"
     var id: String { rawValue.lowercased() }
     var icon: String {
         switch self {
         case .general: return "slider.horizontal.3"
         case .services: return "shippingbox"
         case .knowledge: return "books.vertical"
+        case .history: return "clock.arrow.circlepath"
         case .shortcuts: return "keyboard"
         case .about: return "info.circle"
         }
@@ -567,6 +678,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 }
 
 private struct LocalModelCard: View {
+    var compact = false
     @State private var confirmRemoval = false
     @ObservedObject var manager: LocalModelManager
     let kind: LocalModelKind
@@ -578,16 +690,18 @@ private struct LocalModelCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(kind.title).font(.headline)
-                    Text(t("Download size") + " · " + kind.downloadSize).font(.caption).foregroundStyle(.secondary)
+                    Text(kind == .embedding ? (language == .english ? "Local knowledge index model" : "知识库本地索引模型") : kind != .embedding ? (language == .english ? "Real-time Chinese & English recognition" : "中英双语实时识别") : kind.title).font(.headline)
+                    Text(kind == .embedding ? "BGE-M3 Q8・" + kind.downloadSize : (kind == .streamingSpeech ? "Paraformer" : "Zipformer") + " · " + kind.downloadSize).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label(statusTitle, systemImage: manager.installed.contains(kind) ? "checkmark.circle.fill"
+                Label(statusTitle, systemImage: (kind == .embedding ? manager.embeddingVerification.isReady : manager.installed.contains(kind)) ? "checkmark.circle.fill"
                       : manager.queued.contains(kind) ? "clock" : "arrow.down.circle")
-                    .font(.caption).foregroundStyle(manager.installed.contains(kind) ? .green : .secondary)
+                    .font(.caption).foregroundStyle((kind == .embedding ? manager.embeddingVerification.isReady : manager.installed.contains(kind)) ? .green : .secondary)
             }
-            Text(language == .english ? "Automatically tries available download sources. Progress is for the current file." : "自动尝试可用下载线路；进度显示当前文件的下载比例。")
-                .font(.caption).foregroundStyle(.secondary)
+            if kind == .streamingSpeech && !compact {
+                Text(language == .english ? "Transcribe mixed Chinese and English locally, offline, with no API fees." : "支持中英文混合语音转写，本地离线运行，无需 API 费用。")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             if manager.downloading == kind {
                 if let value = manager.downloadProgress {
                     ProgressView(value: value)
@@ -597,23 +711,32 @@ private struct LocalModelCard: View {
             } else if manager.queued.contains(kind) {
                 Text(language == .english ? "Download is queued and will start automatically after the current model." : "已加入下载队列，当前模型完成后会自动开始。")
                     .font(.caption).foregroundStyle(.secondary)
-            } else {
-                Button(t(manager.installed.contains(kind) ? "Download again" : "Download model")) { manager.install(kind) }
-                    .disabled(locked || manager.downloading != nil).accessibilityIdentifier("download-" + kind.rawValue)
-                if manager.installed.contains(kind) {
-                    Button(language == .english ? "Delete local model…" : "删除本地模型…", role: .destructive) { confirmRemoval = true }
-                        .disabled(locked || manager.downloading != nil)
-                        .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
-                            Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
-                        } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
-                }
-                if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty { Text(t(manager.message)).font(.caption).foregroundStyle(.secondary) }
             }
-            Text(t("Downloaded once, stored on this Mac. No Python, Ollama or Docker installation is required.")).font(.caption).foregroundStyle(.secondary)
-        }.padding(16).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
+            HStack(spacing: 12) {
+                Button(kind == .embedding && manager.installed.contains(kind) ? t("Verify / Retry") : (language == .english ? "Download / Retry" : "下载/重试")) {
+                    if kind == .embedding && manager.installed.contains(kind) { Task { await manager.verifyEmbedding() } }
+                    else { manager.install(kind) }
+                }
+                    .disabled(locked || manager.downloading != nil || manager.queued.contains(kind) || (kind == .embedding ? manager.embeddingVerification.isChecking || manager.embeddingVerification.isReady : manager.installed.contains(kind)))
+                    .accessibilityIdentifier("download-" + kind.rawValue)
+                Spacer()
+                Button(language == .english ? "Delete local files…" : "删除本地文件…", role: .destructive) { confirmRemoval = true }
+                    .foregroundStyle(.red)
+                    .disabled(locked || manager.downloading != nil || manager.queued.contains(kind) || !manager.installed.contains(kind) || manager.embeddingVerification.isChecking)
+                    .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
+                        Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
+                    } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
+            }
+            if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty {
+                Text(t(manager.message)).font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(compact ? 0 : 16).background(.quaternary.opacity(compact ? 0 : 0.45), in: RoundedRectangle(cornerRadius: 12))
             .onAppear { manager.refresh() }
     }
     private var statusTitle: String {
+        if kind == .embedding && manager.installed.contains(kind) {
+            return t(manager.embeddingVerification.message)
+        }
         if manager.installed.contains(kind) { return t("Installed · offline ready") }
         if manager.downloading == kind { return language == .english ? "Downloading…" : "正在下载…" }
         if manager.queued.contains(kind) { return language == .english ? "Queued for download" : "等待下载" }
@@ -625,6 +748,7 @@ private struct LocalModelCard: View {
 private struct CredentialStatus: View {
     @ObservedObject var coordinator: AppCoordinator
     let analysis: Bool
+    var embedding = false
     private var available: Bool { analysis ? coordinator.hasAnalysisKey : coordinator.hasAPIKey }
     private var checking: Bool { analysis ? coordinator.isCheckingAnalysisKey : coordinator.isCheckingKey }
     private var needsAuthorization: Bool { analysis ? coordinator.analysisKeyNeedsAuthorization : coordinator.keyNeedsAuthorization }
@@ -632,12 +756,12 @@ private struct CredentialStatus: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: available ? "checkmark.shield.fill" : "key.horizontal")
-                .font(.title2).foregroundStyle(available ? Color.green : .secondary)
+                .font(.title2).foregroundStyle((embedding ? coordinator.embeddingVerification.isReady : available) ? Color.green : .secondary)
             VStack(alignment: .leading, spacing: 5) {
-                Text(t(coordinator.isMock ? "Mock credential" : checking ? "Checking Keychain…" : available ? "API key configured" : needsAuthorization ? "API key saved · authorization needed" : "API key not configured")).font(.headline)
+                Text(t(embedding ? (coordinator.embeddingVerification.isReady ? "Verified · ready" : available ? "API key saved · verification required" : "API key not configured") : coordinator.isMock ? "Mock credential" : checking ? "Checking Keychain…" : available ? "API key configured" : needsAuthorization ? "API key saved · authorization needed" : "API key not configured")).font(.headline)
                 if available && !coordinator.isMock {
                     Text("••••••••").font(.system(.body, design: .monospaced)).accessibilityLabel(t("Key hidden"))
-                    Text(t("Credential ready. Its contents are never displayed here.")).font(.caption).foregroundStyle(.secondary)
+                    Text(t(embedding && !coordinator.embeddingVerification.isReady ? "Key saved. Service verification is still required." : "Credential ready. Its contents are never displayed here.")).font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text(t(analysis ? coordinator.analysisKeyStatus : coordinator.keyStatus)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
@@ -652,12 +776,42 @@ struct CredentialEditor: View {
     @ObservedObject var coordinator: AppCoordinator
     let analysis: Bool
     var onboarding = false
+    var liveLayout = false
+    var embeddingLayout = false
+    var analysisLayout = false
+    private var hasConnectionTest: Bool { liveLayout || embeddingLayout || analysisLayout }
     @State private var editing = false
     @State private var value = ""
     @State private var message = ""
     @State private var saving = false
     @State private var confirmingRemoval = false
     @State private var showKeyCheck = false
+    @State private var editorVisible = false
+    @State private var testingConnection = false
+    @State private var connectionTestMessage = ""
+    @State private var connectionTestSucceeded = false
+    @State private var connectionTestTask: Task<Void, Never>?
+    @State private var connectionTestID = UUID()
+    @State private var testedCredentialRevision: UUID?
+    @State private var connectionFailure: OnboardingConnectionFailure?
+    private var effectiveFailure: OnboardingConnectionFailure? {
+        if embeddingLayout, case .failed(let message) = coordinator.embeddingVerification {
+            return .classify(CopilotError.message(message))
+        }
+        return connectionFailure
+    }
+    private var connectionVerified: Bool {
+        if analysisLayout { return coordinator.isAnalysisConnectionVerified }
+        if embeddingLayout { return coordinator.embeddingVerification.isReady }
+        return connectionTestSucceeded
+    }
+    private var connectionBusy: Bool { testingConnection || (embeddingLayout && coordinator.embeddingVerification.isChecking) }
+    private var analysisConnectionIdentity: String {
+        let s = coordinator.settings
+        return [s.reasoningService.rawValue, s.analysisModel, s.reasoningEffort, s.analysisProcessing.rawValue,
+                s.deepSeekEffort, s.presetConnection?.thinking.rawValue ?? "",
+                (try? s.analysisCredentialReference().account) ?? "invalid"].joined(separator: "|")
+    }
     private var available: Bool { analysis ? coordinator.hasAnalysisKey : coordinator.hasAPIKey }
     private var checking: Bool { analysis ? coordinator.isCheckingAnalysisKey : coordinator.isCheckingKey }
     private var needsAuthorization: Bool { analysis ? coordinator.analysisKeyNeedsAuthorization : coordinator.keyNeedsAuthorization }
@@ -670,65 +824,129 @@ struct CredentialEditor: View {
     private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
     var body: some View {
         Group {
-            if onboarding { fields }
+            if liveLayout { fields }
+            else if onboarding { fields }
             else { SettingsSection { fields.padding(12) } label: { Text("API Key") } }
         }
         .confirmationDialog(t("Remove this service's saved key?"), isPresented: $confirmingRemoval) {
             Button(t("Remove"), role: .destructive) {
                 Task {
-                    saving = true; showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); defer { saving = false }
+                    resetConnectionTest(); saving = true; showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); defer { saving = false }
                     do { try await coordinator.removeCredential(analysis: analysis); message = "Saved key removed." }
                     catch { message = error.localizedDescription }
                 }
             }
             Button(t("Cancel"), role: .cancel) {}
         }
-        .onDisappear { value = ""; editing = false }
-        .onChange(of: credentialIdentity) { _, _ in showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); message = ""; value = ""; editing = false }
+        .onAppear { editorVisible = true }
+        .onDisappear { editorVisible = false; value = ""; editing = false; resetConnectionTest() }
+        .onChange(of: coordinator.settings.liveModel) { _, _ in if liveLayout { resetConnectionTest() } }
+        .onChange(of: coordinator.settings.embeddingModel) { _, _ in if embeddingLayout { resetConnectionTest() } }
+        .onChange(of: available) { _, newValue in if !newValue { resetConnectionTest() } }
+        .onChange(of: analysisConnectionIdentity) { _, _ in if analysisLayout { resetConnectionTest() } }
+        .onChange(of: coordinator.answerCredentialRevision) { _, revision in if revision != testedCredentialRevision { resetConnectionTest() } }
+        .onChange(of: credentialIdentity) { _, _ in resetConnectionTest(); showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis); message = ""; value = ""; editing = false }
     }
     private var fields: some View {
             VStack(alignment: .leading, spacing: onboarding ? 10 : 14) {
-                CredentialStatus(coordinator: coordinator, analysis: analysis)
+                CredentialStatus(coordinator: coordinator, analysis: analysis, embedding: embeddingLayout)
                 if editing || (!available && !needsAuthorization) {
                     SecureField(t(available ? "Enter a replacement key" : "Enter a key to save in Keychain"), text: $value)
                         .textFieldStyle(.roundedBorder).accessibilityIdentifier("credential-input")
-                    HStack {
-                        Button(onboarding ? ServiceGuide.text("Save to Keychain", "保存到钥匙串", coordinator.settings.language) : t("Save Key")) { save() }.disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || checking || coordinator.isMock)
-                        if available || needsAuthorization { Button(t("Cancel")) { editing = false; value = "" } }
-                    }
                 }
-                HStack {
-                    if (available || needsAuthorization) && !editing { Button(t("Replace key…")) { editing = true; message = "" }.disabled(coordinator.isMock) }
-                    Button(t(needsAuthorization ? "Authorize saved key" : "Check saved key")) {
+                HStack(spacing: 10) {
+                    if editing || (!available && !needsAuthorization) {
+                        Button(liveLayout || embeddingLayout ? ServiceGuide.text("Save and verify", "保存并验证", coordinator.settings.language) : ServiceGuide.text("Save to Keychain", "保存到钥匙串", coordinator.settings.language)) { save() }
+                            .disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || checking || connectionBusy || coordinator.isMock)
+                        if available || needsAuthorization { Button(t("Cancel")) { editing = false; value = "" } }
+                    } else if available || needsAuthorization {
+                        Button(t("Replace key…")) { editing = true; message = "" }
+                            .disabled(coordinator.isMock || connectionBusy)
+                    }
+                    Button(t(needsAuthorization ? "Authorize saved key" : "Check key")) {
                         showKeyCheck = true; message = ""
-                        analysis ? coordinator.refreshAnalysisKeyState(interactive: true) : coordinator.refreshKeyState(interactive: true)
-                    }.disabled(checking || saving).accessibilityIdentifier("credential-check-saved")
+                        _ = analysis ? coordinator.refreshAnalysisKeyState(interactive: true) : coordinator.refreshKeyState(interactive: true)
+                    }.disabled(checking || saving || connectionBusy).accessibilityIdentifier("credential-check-saved")
                     .popover(isPresented: $showKeyCheck, arrowEdge: .top) {
                         CredentialCheckResultView(feedback: checkFeedback ?? .checking, language: coordinator.settings.language) {
                             showKeyCheck = false
                         }
                     }
-                    Spacer()
-                    if available || needsAuthorization { Button(t("Remove"), role: .destructive) { confirmingRemoval = true }.disabled(saving || checking || coordinator.isMock) }
+                    if hasConnectionTest {
+                        Button(ServiceGuide.text("Test connection", "测试连接", coordinator.settings.language)) { testConnection() }
+                            .disabled(!available || saving || checking || connectionBusy || coordinator.isRunning || coordinator.isTransitioning || (analysisLayout && coordinator.settings.analysisModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || (coordinator.isMock && !analysisLayout))
+                            .accessibilityIdentifier(onboarding ? "onboarding-test-connection" : "credential-test-connection")
+                        if connectionBusy {
+                            ProgressView().controlSize(.small)
+                            if testingConnection { Button(t("Cancel")) { resetConnectionTest() } }
+                        }
+                        if !connectionBusy && (connectionVerified || effectiveFailure != nil) {
+                            OnboardingConnectionFeedback(language: coordinator.settings.language, testing: false,
+                                verified: connectionVerified, saved: available, mock: coordinator.isMock,
+                                failure: effectiveFailure, compact: true)
+                                .lineLimit(1).layoutPriority(-1)
+                                .help(effectiveFailure?.detail(coordinator.settings.language) ?? t(connectionTestMessage))
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if available || needsAuthorization { Button(t("Remove"), role: .destructive) { confirmingRemoval = true }.disabled(saving || checking || connectionBusy || coordinator.isMock) }
                 }
-                if let checkFeedback {
+                .buttonStyle(.bordered)
+                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
+                if hasConnectionTest, let failure = effectiveFailure, !connectionBusy {
+                    Text(failure.detail(coordinator.settings.language)).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        .accessibilityIdentifier("credential-connection-failure-detail")
+                }
+                if let checkFeedback, !connectionVerified {
                     Label(checkFeedback.message(coordinator.settings.language), systemImage: checkFeedback.symbol)
                         .font(.caption).foregroundStyle(checkFeedback == .found ? Color.green : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("credential-check-result")
                 }
                 if !message.isEmpty { Text(t(message)).font(.caption).textSelection(.enabled) }
-                Text(onboarding
+                Text((onboarding || liveLayout)
                      ? ServiceGuide.text("Saved in macOS Keychain on this Mac. Each provider's key is managed separately.", "密钥保存在本机 macOS 钥匙串，各服务商密钥独立管理。", coordinator.settings.language)
-                     : t("Saved securely on this Mac and reused on launch. Existing development keys are imported once; startup never opens an authorization dialog."))
+                     : t("Saved securely on this Mac and reused on launch."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if analysisLayout {
+                    Text(ServiceGuide.text("Testing sends one short example question, without your conversation or documents, and may incur API charges.", "测试仅发送一条简短示例问题，不附带对话或资料，可能产生 API 费用。", coordinator.settings.language))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
     }
+    private func resetConnectionTest() {
+        connectionTestID = UUID(); connectionTestTask?.cancel(); connectionTestTask = nil
+        testingConnection = false; connectionTestMessage = ""; connectionTestSucceeded = false; connectionFailure = nil
+    }
+    private func testConnection() {
+        resetConnectionTest()
+        testingConnection = true; connectionTestMessage = embeddingLayout ? "Connecting to the embedding service…" : "Connecting to the speech service…"
+        let id = connectionTestID
+        testedCredentialRevision = coordinator.answerCredentialRevision
+        connectionTestTask = Task { @MainActor in
+            do {
+                if analysisLayout { try await coordinator.testAnalysisConnection() }
+                else if embeddingLayout { try await coordinator.testEmbeddingConnection() }
+                else { try await coordinator.testLiveConnection() }
+                guard !Task.isCancelled, id == connectionTestID else { return }
+                connectionTestSucceeded = true; connectionTestMessage = embeddingLayout ? "Embedding service connection successful." : "Speech service connection successful."
+            } catch {
+                guard !Task.isCancelled, id == connectionTestID else { return }
+                connectionTestSucceeded = false; connectionTestMessage = error.localizedDescription; connectionFailure = .classify(error)
+            }
+            testingConnection = false
+        }
+    }
     private func save() {
+        resetConnectionTest()
         let key = value; value = ""; saving = true; showKeyCheck = false; coordinator.clearCredentialCheckFeedback(analysis: analysis)
         Task {
             defer { saving = false }
-            do { try await coordinator.saveCredential(key, analysis: analysis); editing = false; message = "Saved in macOS Keychain." }
+            do { try await coordinator.saveCredential(key, analysis: analysis); editing = false; message = "Saved in macOS Keychain."
+                if liveLayout && editorVisible { testConnection() }
+            }
             catch { message = error.localizedDescription }
         }
     }
@@ -767,5 +985,213 @@ struct CredentialCheckResultView: View {
             HStack { Spacer(); Button(ServiceGuide.text("Done", "知道了", language), action: dismiss) }
         }.padding(18).frame(width: 290, alignment: .leading)
             .accessibilityIdentifier("credential-check-popover")
+    }
+}
+
+/// Presentation-only presets; persisted thresholds and the inference policy stay unchanged.
+enum JevSensitivity: Int, CaseIterable {
+    case low, lower, medium, higher, high
+    var threshold: Double {
+        switch self {
+        case .low: return 0.95
+        case .lower: return 0.9
+        case .medium: return 0.8
+        case .higher: return 0.65
+        case .high: return 0.5
+        }
+    }
+    static func nearest(to threshold: Double) -> Self {
+        guard threshold.isFinite else { return .medium }
+        return allCases.min { abs($0.threshold - threshold) < abs($1.threshold - threshold) } ?? .medium
+    }
+    func title(_ language: AppLanguage) -> String {
+        switch self {
+        case .low: return ServiceGuide.text("Low", "低", language)
+        case .lower: return ServiceGuide.text("Lower", "较低", language)
+        case .medium: return ServiceGuide.text("Medium", "中", language)
+        case .higher: return ServiceGuide.text("Higher", "较高", language)
+        case .high: return ServiceGuide.text("High", "高", language)
+        }
+    }
+}
+
+/// Compact controls for the existing automatic-trigger path. Runtime diagnostics remain in the manager.
+private struct JevSettingsView: View {
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var laya: LayaRuntimeManager
+    @State private var confirmRemoval = false
+    @State private var testText = ""
+    @State private var result: LayaDiagnosticResult?
+    @State private var testError = ""
+    @State private var testTask: Task<Void, Never>?
+    private var locked: Bool { coordinator.isRunning || coordinator.isTransitioning || coordinator.isTestingLaya }
+    private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
+    private var running: Bool { laya.isReady && coordinator.isRunning && coordinator.settings.automaticSuggestions && coordinator.settings.listeningService.isLocal }
+    private var stateTitle: String {
+        switch laya.state {
+        case .unsupported: return b("Unavailable on this Mac", "此 Mac 不支持")
+        case .notInstalled: return b("Not downloaded", "未下载")
+        case .installed: return b("Downloaded · Not loaded", "已下载 · 未加载")
+        case .installing: return b("Downloading / Installing…", "正在下载与安装…")
+        case .loading: return b("Loading and checking…", "正在加载与检测…")
+        case .ready: return running ? b("Running", "运行中") : b("Loaded · Standby", "已加载 · 待机")
+        case .failed: return b("Load / runtime failed", "加载或运行失败")
+        }
+    }
+    private var stateColor: Color { laya.state == .failed ? .red : (laya.isReady ? .green : .secondary) }
+    private var stateIcon: String { laya.state == .failed ? "exclamationmark.circle" : (laya.isReady ? "checkmark.circle.fill" : "cpu") }
+    private var sensitivity: JevSensitivity { .nearest(to: coordinator.settings.layaThreshold) }
+    private var sensitivityBinding: Binding<Double> {
+        Binding(get: { Double(sensitivity.rawValue) }, set: { value in
+            guard value.isFinite, let level = JevSensitivity(rawValue: Int(value.rounded())) else { return }
+            coordinator.settings.layaThreshold = level.threshold
+        })
+    }
+    private var modelActionTitle: String {
+        switch laya.state {
+        case .ready: return b("Loaded", "已加载")
+        case .loading: return b("Checking…", "检测中…")
+        case .installing: return b("Downloading…", "下载中…")
+        case .installed: return b("Load model", "加载模型")
+        case .failed: return laya.isInstalled ? b("Retry loading", "重试加载") : b("Retry download", "重试下载")
+        default: return b("Download model", "下载模型")
+        }
+    }
+    private var continuousQuestionDescription: String {
+        switch coordinator.settings.continuousQuestionPolicy {
+        case .fast: return b("Respond to each clear request as soon as possible.", "回应意图明确后，尽快分别回答。")
+        case .smart: return b("Keep the first answer fast; merge related follow-ups.", "首答保持快速，相关补充问题智能合并。")
+        case .complete: return b("Wait briefly for follow-ups before answering.", "短暂等待后续补充，再生成完整回答。")
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            card {
+                Toggle(isOn: $coordinator.settings.automaticSuggestions) {
+                    Text("Jev Mode").font(.headline).accessibilityAddTraits(.isHeader)
+                }.disabled(coordinator.isTestingLaya).accessibilityIdentifier("jev-enabled")
+                Text(b("Recognize when a response is needed and automatically generate answers.", "判断此时是否需要回应，自动生成回答。"))
+                    .font(.callout).foregroundStyle(.secondary)
+                Label("Laya · " + stateTitle, systemImage: stateIcon)
+                    .font(.caption).foregroundStyle(stateColor).accessibilityIdentifier("laya-runtime-status")
+                if coordinator.settings.listeningService == .openAI {
+                    Text(b("GPT-Live-1 handles triggering; Laya sensitivity applies to local speech engines.", "当前由 GPT-Live-1 触发；Laya 灵敏度用于本地语音引擎。"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Divider().padding(.vertical, 2)
+                HStack(spacing: 8) {
+                    Text(b("Trigger sensitivity", "触发灵敏度")).font(.subheadline.weight(.medium))
+                    Text(sensitivity.title(coordinator.settings.language)).font(.subheadline.weight(.semibold)).foregroundStyle(Color.accentColor)
+                        .accessibilityIdentifier("laya-sensitivity-level")
+                    Spacer()
+                    Button(b("Restore recommended", "恢复推荐值")) { coordinator.settings.layaThreshold = JevSensitivity.medium.threshold }
+                        .disabled(coordinator.isTestingLaya || coordinator.settings.layaThreshold == JevSensitivity.medium.threshold)
+                        .accessibilityIdentifier("laya-reset-threshold")
+                }
+                Slider(value: sensitivityBinding, in: 0...4, step: 1)
+                    .disabled(coordinator.isTestingLaya).accessibilityLabel(b("Trigger sensitivity", "触发灵敏度"))
+                    .accessibilityValue(sensitivity.title(coordinator.settings.language)).accessibilityIdentifier("laya-threshold")
+                HStack {
+                    Text(b("Fewer false triggers", "减少误触发"))
+                    Spacer()
+                    Text(b("More responses", "更多响应"))
+                }.font(.caption).foregroundStyle(.secondary)
+            }
+            card {
+                HStack {
+                    Text(b("Local model management", "本地模型管理")).font(.headline)
+                    Spacer()
+                    Label("Laya · " + stateTitle, systemImage: stateIcon).font(.caption).foregroundStyle(stateColor)
+                        .accessibilityIdentifier("laya-install-status")
+                }
+                HStack(spacing: 8) {
+                    Button(modelActionTitle) { if laya.isInstalled { laya.prepare() } else { laya.install() } }
+                        .disabled(laya.isReady || laya.isBusy || locked || laya.state == .unsupported).accessibilityIdentifier("install-laya")
+                    Button(b("Check model", "检测模型")) { laya.checkModel() }
+                        .disabled(!laya.isInstalled || laya.isBusy || locked).accessibilityIdentifier("check-laya")
+                    if laya.isBusy {
+                        Button(b("Cancel", "取消")) { coordinator.cancelLayaRuntime() }.accessibilityIdentifier("cancel-laya")
+                    }
+                    Spacer()
+                    Button(b("Delete…", "删除…"), role: .destructive) { confirmRemoval = true }
+                        .foregroundStyle(.red).disabled(laya.isBusy || locked || laya.state == .notInstalled || laya.state == .unsupported)
+                        .accessibilityIdentifier("remove-laya")
+                        .confirmationDialog(b("Delete Laya model, runtime and download cache?", "删除 Laya 模型、运行环境和下载缓存？"), isPresented: $confirmRemoval) {
+                            Button(b("Delete", "删除"), role: .destructive) { if !locked { laya.removeDownloadedFiles() } }
+                        } message: { Text(b("You will need to download again. Settings and knowledge documents are retained.", "下次使用需要重新下载；保留设置与知识库资料。")) }
+                }
+                if laya.isBusy {
+                    if let value = laya.transferProgress ?? laya.progress { ProgressView(value: value) }
+                    else { ProgressView().progressViewStyle(.linear) }
+                    if !laya.transferStatus.isEmpty { Text(laya.transferStatus).font(.caption.monospacedDigit()) }
+                }
+                if laya.state == .failed {
+                    Text(b("Retry the model; manual answers remain available.", "请重试模型；仍可手动生成回答。"))
+                        .font(.caption).foregroundStyle(.red)
+                }
+                if coordinator.isRunning || coordinator.isTransitioning {
+                    Text(b("Stop listening to manage the model.", "停止监听后可管理模型。")).font(.caption).foregroundStyle(.secondary)
+                }
+                DisclosureGroup(b("Test automatic triggering", "测试自动触发")) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField(b("Enter a sample question", "输入一段模拟提问"), text: $testText, axis: .vertical)
+                            .lineLimit(2...4).textFieldStyle(.roundedBorder).disabled(coordinator.isTestingLaya)
+                            .accessibilityIdentifier("laya-test-text")
+                        HStack {
+                            Button(b("Test local detection", "测试本地判断")) {
+                                result = nil; testError = ""
+                                testTask = Task {
+                                    do { result = try await coordinator.testLayaTrigger(text: testText) }
+                                    catch is CancellationError { }
+                                    catch { testError = b("Test failed. Check the model and retry.", "测试失败，请检测模型后重试。") }
+                                }
+                            }.disabled(locked || laya.isBusy || !laya.isInstalled || testText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || testText.utf8.count > 65536)
+                                .accessibilityIdentifier("laya-test-run")
+                            if coordinator.isTestingLaya { ProgressView().controlSize(.small) }
+                            if let result {
+                                Label(result.decision.shouldTrigger ? b("Would trigger", "建议触发") : b("Keep waiting", "继续等待"),
+                                      systemImage: result.decision.shouldTrigger ? "checkmark.circle.fill" : "clock")
+                                    .foregroundStyle(result.decision.shouldTrigger ? Color.green : Color.secondary)
+                            }
+                        }
+                        if let result {
+                            Text(b("Local decision", "本地判断") + String(format: " %.1f ms", result.predictionMS))
+                                .font(.caption.monospacedDigit()).accessibilityIdentifier("laya-test-result")
+                            if result.preparationMS > 5 {
+                                Text(b("Model preparation", "模型准备") + String(format: " %.0f ms", result.preparationMS)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Text(reason(result.decision)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if !testError.isEmpty { Text(testError).font(.caption).foregroundStyle(.red) }
+                        Text(b("Local test only; no paid API call. Timing excludes audio, transcription, waiting and answer generation.", "仅测试本地判断，不调用付费 API。耗时不含收音、转写、静音等待与回答生成。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.padding(.top, 8)
+                }.accessibilityIdentifier("laya-test-section")
+            }
+            card {
+                Text(b("Continuous questions", "连续提问处理")).font(.headline)
+                Picker(b("Continuous questions", "连续提问处理"), selection: $coordinator.settings.continuousQuestionPolicy) {
+                    ForEach(ContinuousQuestionPolicy.allCases) { policy in Text(L10n.text(policy.label, language: coordinator.settings.language)).tag(policy) }
+                }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("continuous-question-policy")
+                Text(continuousQuestionDescription).font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("continuous-question-description")
+                Label(b("All modes keep previous answers; new answers never overwrite them.", "所有模式均保留历史回答，新回答不会覆盖旧回答。"), systemImage: "clock.arrow.circlepath")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.controlSize(.regular)
+        .onChange(of: testText) { _, _ in result = nil; testError = "" }
+        .onChange(of: coordinator.settings.layaThreshold) { _, _ in result = nil }
+        .onDisappear { testTask?.cancel() }
+    }
+    private func reason(_ decision: LayaTriggerDecision) -> String {
+        switch decision {
+        case .belowThreshold: return b("The score is below the current threshold.", "判断分数低于当前阈值。")
+        case .threshold: return b("The score meets the current threshold.", "判断分数达到当前阈值。")
+        }
+    }
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8, content: content).padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
     }
 }

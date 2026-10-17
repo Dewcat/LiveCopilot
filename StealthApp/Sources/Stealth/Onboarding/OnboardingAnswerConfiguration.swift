@@ -12,7 +12,7 @@ struct OnboardingAnswerConfiguration: View {
         })
     }
     var body: some View {
-        OnboardingServiceSection(number: 1, title: b("Choose & configure your answer model", "选择与配置回答模型")) {
+        OnboardingServiceSection(number: 1, title: b("Choose & configure your answer model", "选择与配置回答模型"), showsBorder: false) {
             HStack(spacing: 10) {
                 Picker(b("Provider", "AI 服务商"), selection: provider) {
                     Text("OpenAI").tag(ReasoningService.separateOpenAI)

@@ -20,6 +20,7 @@ final class LayaRuntimeManager: ObservableObject {
     private var worker: LayaWorker?
     private var installer: LayaWorker?
     private var epoch: UInt64 = 0
+    var downloadByteCount: Int64? { LayaDownloadSize.load(resources: resources)?.totalBytes }
     var isReady: Bool { state == .ready }
     var isBusy: Bool { state == .installing || state == .loading }
     var isInstalled: Bool { Self.hasInstallation(root.appendingPathComponent("current"), resources: resources) }
@@ -38,6 +39,31 @@ final class LayaRuntimeManager: ObservableObject {
     }
     func install() { begin(download: true) }
     func prepare() { begin(download: false) }
+    /// Re-hash the installed files and run a fresh local warmup; never downloads.
+    func checkModel() { begin(download: false, reload: true) }
+    /// The worker verifies this bundled checkpoint before publishing ready.
+    var checkpointID: String? {
+        if let data = try? Data(contentsOf: resources.appendingPathComponent("response-model.json")),
+           let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return manifest["id"] as? String
+        }
+        guard let data = try? Data(contentsOf: resources.appendingPathComponent("pins.json")),
+              let pins = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return pins["id"] as? String
+    }
+    var technicalDetails: String {
+        guard let data = try? Data(contentsOf: resources.appendingPathComponent("pins.json")),
+              let pins = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return "" }
+        let source = (pins["source"] as? [String: Any])?["revision"] as? String ?? "—"
+        let model = pins["model_revision"] as? String ?? "—"
+        let bytes = (pins["model"] as? [[String: Any]] ?? []).reduce(0) { $0 + ($1["size"] as? Int ?? 0) }
+        return "Laya MLX · FP16 · multilingual\nRuntime: \(source)\nModel: \(model)\nCheckpoint: \(checkpointID ?? "—")\nModel files: \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))\n\(root.appendingPathComponent("current").path)"
+    }
+    @Published private(set) var diagnosticEvents: [String] = []
+    private func record(_ event: String) {
+        diagnosticEvents.append(Date().formatted(date: .omitted, time: .standard) + " · " + event)
+        if diagnosticEvents.count > 20 { diagnosticEvents.removeFirst(diagnosticEvents.count - 20) }
+    }
     func prepareAndWait() async throws {
         try Task.checkCancellation()
         if isReady { return }
@@ -58,7 +84,7 @@ final class LayaRuntimeManager: ObservableObject {
         } catch {
             if stamp == epoch {
                 worker.stop(); self.worker = nil
-                state = .failed
+                record("prediction_failed"); state = .failed
                 message = "Laya stopped. Reload the model; manual generation remains available."
             }
             throw error
@@ -76,6 +102,7 @@ final class LayaRuntimeManager: ObservableObject {
     }
     func cancel() { stop() }
     func stop() {
+        record("stopped")
         epoch &+= 1
         task?.cancel(); task = nil
         worker?.stop(); worker = nil
@@ -92,15 +119,16 @@ final class LayaRuntimeManager: ObservableObject {
         stop()
         _ = try? await pending?.value
     }
-    private func begin(download: Bool) {
+    private func begin(download: Bool, reload: Bool = false) {
         guard Self.supported, task == nil, !isBusy else { return }
-        if !download && isReady { return }
+        if !download && isReady && !reload { return }
         guard download || isInstalled else {
             state = .notInstalled; message = "Download Laya before loading it."; return
         }
         epoch &+= 1
         let stamp = epoch
         worker?.stop(); worker = nil
+        record(download ? "install_started" : "load_and_verify_started")
         state = download ? .installing : .loading
         transferStatus = ""; transferProgress = nil
         downloadFileIndex = nil; downloadFileTotal = nil
@@ -152,17 +180,24 @@ final class LayaRuntimeManager: ObservableObject {
                 guard stamp == self.epoch, self.isInstalled else { throw LayaRuntimeError.unavailable }
                 self.state = .loading; self.progress = nil; self.message = "Loading Laya locally…"
                 self.downloadFileIndex = nil; self.downloadFileTotal = nil
-                let worker = LayaWorker(installation: self.root.appendingPathComponent("current").resolvingSymlinksInPath(), resources: self.resources)
+                let worker = LayaWorker(installation: self.root.appendingPathComponent("current").resolvingSymlinksInPath(), resources: self.resources) { [weak self] in
+                    Task { @MainActor in
+                        guard let self, self.epoch == stamp, self.state == .ready else { return }
+                        self.record("worker_exited")
+                        self.state = .failed
+                        self.message = "Laya stopped. Reload the model; manual generation remains available."
+                    }
+                }
                 self.worker = worker
                 try await worker.prepare()
                 try Task.checkCancellation()
                 guard stamp == self.epoch else { throw CancellationError() }
-                self.state = .ready; self.message = "Laya is ready. Detection runs offline."; self.task = nil
+                self.record("warmup_passed · \(self.checkpointID ?? "unknown")"); self.state = .ready; self.message = "Laya is ready. Detection runs offline."; self.task = nil
             } catch {
                 if stamp == self.epoch {
                     self.worker?.stop(); self.worker = nil
                     self.installer?.stop(); self.installer = nil
-                    self.task = nil; self.progress = nil; self.state = .failed
+                    self.record("load_or_install_failed"); self.task = nil; self.progress = nil; self.state = .failed
                     self.downloadFileIndex = nil; self.downloadFileTotal = nil
                     self.message = self.isInstalled
                         ? "Laya was downloaded but could not start. Retry loading it; manual generation remains available."

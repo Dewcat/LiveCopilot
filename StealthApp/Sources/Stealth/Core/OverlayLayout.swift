@@ -13,12 +13,15 @@ enum OverlayLayout {
         let answer = automatic ? min(max(28, answerIdeal), max(0, room - transcript)) : max(0, room - transcript)
         return (transcript, answer)
     }
-    static func fitted(_ frame: CGRect, height: CGFloat, visible: CGRect, docked: Bool) -> CGRect {
+    static func fitted(_ frame: CGRect, height: CGFloat, visible: CGRect, docked: Bool, minimumHeight: CGFloat = 240) -> CGRect {
         let inset = visible.insetBy(dx: 12, dy: 12)
         let width = min(frame.width, inset.width)
-        let height = min(max(240, height), inset.height, 900)
+        let minimum = min(max(240, minimumHeight), inset.height)
+        let top = min(max(frame.maxY, inset.minY + minimum), inset.maxY)
+        // Grow down from the existing top edge; scroll at the bottom boundary
+        // instead of shifting the fixed voice/composer area upward.
+        let height = min(max(minimum, height), top - inset.minY, 900)
         let x = docked ? inset.maxX - width : min(max(frame.minX, inset.minX), inset.maxX - width)
-        let top = min(max(frame.maxY, inset.minY + height), inset.maxY)
         return CGRect(x: x, y: top - height, width: width, height: height)
     }
     static func atRightEdge(_ point: CGPoint, screen: CGRect, visible: CGRect) -> Bool {

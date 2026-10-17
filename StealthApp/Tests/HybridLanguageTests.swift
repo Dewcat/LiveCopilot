@@ -175,15 +175,6 @@ final class HybridLanguageTests: XCTestCase {
         XCTAssertEqual(SuggestionParser.sections("建议回答：\n这是中文回答。").first?.title, "建议回答")
         XCTAssertEqual(SuggestionParser.sections("A plain streamed sentence.").first?.title, "")
     }
-    func testExplicitCompletionGuards() {
-        for text in ["He asked me why the service was slow yesterday.", "请问方法的", "What is the difference between X and", "不用回答，请问延迟是多少？", "I would like to ask you about"] {
-            XCTAssertTrue(QuestionCompleteness.mustWait(text), text)
-            XCTAssertFalse(QuestionCompleteness.explicitDirectQuestion(text), text)
-        }
-        XCTAssertTrue(QuestionCompleteness.explicitDirectQuestion("请问方法B的延迟是多少毫秒？"))
-        XCTAssertTrue(QuestionCompleteness.explicitDirectQuestion("What is the latency of method B?"))
-        XCTAssertFalse(QuestionCompleteness.explicitDirectQuestion("今天讨论了什么问题，我们已经有答案了。"))
-    }
     func testNewTurnBoundaryAfterAnsweredAndUnansweredCaptions() {
         var conversation = ConversationState()
         let now = Date()
@@ -201,28 +192,55 @@ final class HybridLanguageTests: XCTestCase {
         XCTAssertEqual(conversation.candidate(speaker: .them, now: now, cooldown: 0, semanticDetection: true), "我不知道日本的首都是哪里")
         XCTAssertEqual(conversation.fragments.count, 5, "Raw transcript must be preserved")
     }
-    func testDirectRequestsWithoutQuestionPunctuation() {
-        for text in ["日本的首都是哪里", "告诉我你的经历", "跟我说你的学历情况", "讲讲冒泡排序",
-                     "讲讲项目中的困难", "讲讲项目中的困难以及解决方法", "嗯，讲一讲 Python 冒泡排序的逻辑",
-                     "请介绍一下你的项目", "Explain bubble sort", "Tell me about your experience",
-                     "What is the capital of Japan", "Could you explain caching"] {
-            XCTAssertTrue(QuestionCompleteness.explicitDirectQuestion(text), text)
-            XCTAssertTrue(LocalQuestionDetector.isQuestion(text), text)
-            XCTAssertTrue(QuestionCompleteness.permitsFastDispatch(text), text)
+    func testRollingContextSeparatesHandledHistoryAndCurrentASRRevision() throws {
+        var conversation = ConversationState()
+        let now = Date()
+        func append(_ id: String, _ speaker: Speaker, _ text: String, _ start: Int, _ end: Int) {
+            _ = conversation.append(.init(id: id, speaker: speaker, text: text,
+                                          startMS: start, endMS: end, receivedAt: now))
         }
-        for text in ["今天的会议到这里结束", "我不知道日本的首都是哪里", "我知道日本的首都是哪里",
-                     "他问我日本的首都是哪里", "他说讲讲冒泡排序", "如果让你讲讲冒泡排序",
-                     "不用回答，讲讲冒泡排序", "讲讲项目中的", "讲讲项目中的困难以及", "请介绍一下",
-                     "你的经历", "我昨天讲了冒泡排序", "He said explain bubble sort", "Explain the",
-                     "Tell me about", "What is", "今天讨论了什么问题，我们已经有答案了。"] {
-            XCTAssertFalse(QuestionCompleteness.explicitDirectQuestion(text), text)
-        }
+        append("question", .them, "介绍一下你的项目", 0, 1000)
+        conversation.begin("介绍一下你的项目", speaker: .them, now: now)
+        append("answer", .you, "我有三个项目：检索、语音和数据分析。", 1200, 4200)
+        append("follow-up", .them, "第一个呢", 4500, 5000)
+        let before = conversation.layaContext(speaker: .them, now: now)
+        let data = try XCTUnwrap(before.data(using: .utf8))
+        let context = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let turns = try XCTUnwrap(context["recentTurns"] as? [[String: Any]])
+        XCTAssertEqual(context["currentSpeaker"] as? String, Speaker.them.rawValue)
+        XCTAssertEqual(turns.compactMap { $0["text"] as? String }, ["介绍一下你的项目", "我有三个项目：检索、语音和数据分析。"])
+        XCTAssertEqual(turns.compactMap { $0["handled"] as? Bool }, [true, false])
+        XCTAssertFalse(before.contains("第一个呢"), "Current candidate must not also appear as history")
+        append("follow-up", .them, "第一个项目仔细讲一下吧", 4500, 5200)
+        XCTAssertEqual(conversation.layaContext(speaker: .them, now: now), before,
+                       "Revising current ASR text must not mutate unrelated history")
+        XCTAssertEqual(conversation.candidate(speaker: .them, now: now, cooldown: 0, semanticDetection: true), "第一个项目仔细讲一下吧")
+        append("answer", .you, "我有三个项目：搜索、语音和数据分析。", 1200, 4300)
+        XCTAssertNotEqual(conversation.layaContext(speaker: .them, now: now), before,
+                          "A historical ASR revision must reach the semantic model")
     }
-    @MainActor func testBelowThresholdRequestsStillRequireFinalSilenceAndDeduplication() async throws {
-        for (text, score) in [("日本的首都是哪里", 0.6639), ("讲讲冒泡排序", 0.3108), ("讲讲项目中的困难", 0.5821)] {
+    func testRollingContextBoundsTransportButKeepsRawTranscript() throws {
+        var conversation = ConversationState()
+        let now = Date()
+        for i in 0..<100 {
+            _ = conversation.append(.init(id: "h\(i)", speaker: .you, text: "\(i):" + String(repeating: "较长的历史发言。", count: 100),
+                                          startMS: i * 2000, endMS: i * 2000 + 1000, receivedAt: now))
+        }
+        _ = conversation.append(.init(id: "current", speaker: .them, text: "那第二个呢", startMS: 201000, endMS: 202000, receivedAt: now))
+        let data = Data(conversation.layaContext(speaker: .them, now: now).utf8)
+        XCTAssertLessThanOrEqual(data.count, 60_000)
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let turns = try XCTUnwrap(value["recentTurns"] as? [[String: Any]])
+        XCTAssertLessThanOrEqual(turns.count, 80)
+        XCTAssertTrue((turns.last?["text"] as? String)?.hasPrefix("99:") == true)
+        XCTAssertEqual(conversation.fragments.count, 101, "Model budget must not erase transcript history")
+    }
+    @MainActor func testSemanticRequestsStillRequireFinalSilenceAndDeduplication() async throws {
+        for text in ["日本的首都是哪里", "第一个项目仔细讲一下吧", "第一个呢", "那延迟呢"] {
+            let score = 0.95
             var outputs: [String] = []
             let gate = LayaTriggerController(predict: { _, _ in score }, onTrigger: { outputs.append($0.text); return true },
-                                             timing: .init(throttle: 0.01, quiet: 0.04), allowExplicitQuestions: true)
+                                             timing: .init(throttle: 0.01, quiet: 0.04))
             gate.configure(enabled: true, cooldown: 0)
             gate.submit(.init(text: text, context: "", speaker: .room, isFinal: false))
             try await Task.sleep(nanoseconds: 80_000_000)
@@ -240,7 +258,7 @@ final class HybridLanguageTests: XCTestCase {
             gate.reset()
         }
     }
-    @MainActor func testFinalReusesPartialScoreDespiteContextOrPunctuationChange() async throws {
+    @MainActor func testContextRevisionRescoresEvenWhenCurrentWordsAreUnchanged() async throws {
         var calls = 0, triggers = 0
         let gate = LayaTriggerController(predict: { _, _ in calls += 1; return 0.97 }, onTrigger: { _ in triggers += 1; return true })
         gate.configure(enabled: true, cooldown: 0)
@@ -248,7 +266,7 @@ final class HybridLanguageTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         gate.submit(.init(text: "Could you explain caching?", context: "final context", speaker: .them, isFinal: true))
         try await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertEqual(calls, 1); XCTAssertEqual(triggers, 1)
+        XCTAssertEqual(calls, 2); XCTAssertEqual(triggers, 1)
         gate.reset()
     }
     @MainActor func testRenderOverlayForVisualAcceptance() async throws {

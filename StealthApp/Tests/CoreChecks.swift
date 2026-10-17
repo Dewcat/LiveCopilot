@@ -33,8 +33,10 @@ enum CoreChecks {
             try expect(request.instructions.contains("ONE useful follow-up question") && !request.instructions.contains("Task: summarize"), "follow-up uses recap instructions")
         }
         try check("local services migrate independently and do not require OpenAI for DeepSeek") {
-            let old = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-            try expect(old.listeningService == .openAI && old.embeddingService == .openAI, "old route silently changed")
+            let empty = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+            try expect(empty.listeningService == .zipformer, "Missing selection did not use the recommended default")
+            let old = try JSONDecoder().decode(AppSettings.self, from: Data(#"{"listeningService":"openAI","embeddingService":"openAI"}"#.utf8))
+            try expect(old.listeningService == .openAI && old.embeddingService == .openAI, "Saved route silently changed")
             try expect(old.deepSeekModel == "deepseek-flash" && AppSettings().deepSeekModel == "deepseek-flash", "DeepSeek default is not Flash")
             var custom = old; custom.deepSeekModel = "deepseek-v4-pro"
             let preserved = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(custom))
@@ -72,7 +74,7 @@ enum CoreChecks {
             let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
             try expect(settings.listeningService == .paraformer && settings.deepSeekModel == "deepseek-flash" && settings.embeddingService == .local, "legacy upgrade lost configuration")
             try expect(settings.background == .frosted && !settings.automaticSuggestions, "legacy upgrade reset appearance or behavior")
-            try expect(ListeningService.allCases.map(\.rawValue) == ["openAI", "apple", "paraformer"], "retired recognizer still selectable")
+            try expect(ListeningService.allCases.map(\.rawValue) == ["zipformer", "paraformer", "apple", "openAI"], "recognizer choices or recommendation order changed")
         }
         try check("independent text sizes persist with safe migration and limits") {
             var settings = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
@@ -92,7 +94,7 @@ enum CoreChecks {
             let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
             try expect(restored == settings && !restored.requiresOpenAIKey && restored.listeningService.sampleRate == 16000, "Apple route incorrectly migrated")
             let old = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
-            try expect(old.appleSpeechLanguage == .chinese && old.listeningService == .openAI, "legacy route changed")
+            try expect(old.appleSpeechLanguage == .chinese && old.listeningService == .zipformer, "missing language or recognizer default changed")
         }
         try check("Apple volatile ranges revise, commit and reject stale results") {
             var state = SpeechPreviewState()
@@ -143,6 +145,7 @@ enum CoreChecks {
             try expect(grown.maxY == small.maxY && grown.width == small.width && grown.height == 580, "growth moved the top edge")
             let capped = OverlayLayout.fitted(small, height: 9999, visible: display, docked: true)
             try expect(display.contains(capped) && capped.maxX == display.maxX - 12, "window escaped negative-origin display")
+            try expect(capped.maxY == small.maxY, "screen-height cap moved the fixed input area")
             let tiny = CGRect(x: 200, y: 0, width: 360, height: 220)
             try expect(tiny.contains(OverlayLayout.fitted(grown, height: 600, visible: tiny, docked: true)), "display removal/short screen clipping")
             try expect(OverlayLayout.atRightEdge(CGPoint(x: -1, y: 100), screen: display, visible: display), "right edge not found")
@@ -160,25 +163,6 @@ enum CoreChecks {
             try expect(!state.shouldHide(inside: false, interacting: false, now: 3), "interaction did not restart leave delay")
             try expect(state.shouldHide(inside: false, interacting: false, now: 4), "did not hide after leaving")
             try expect(!state.shouldHide(inside: true, interacting: false, now: 5), "hid under pointer")
-        }
-        try check("local question gate distinguishes questions from silence fillers and statements") {
-            for text in ["Why did you choose method B?", "Could you explain the sample size?", "What about latency?", "请介绍一下你的项目经历。", "这个方法的延迟是多少？", "你们为什么选择方法B？"] {
-                try expect(LocalQuestionDetector.isQuestion(text), "missed explicit question: " + text)
-            }
-            for text in ["", "好的。", "Thank you.", "Method B is faster.", "Why did you choose the", "请介绍这个实验，因为", "我不知道为什么失败。", "Why did you choose B? Never mind, no need to answer."] {
-                try expect(!LocalQuestionDetector.isQuestion(text), "false trigger: " + text)
-            }
-        }
-        try check("Laya restores missing question punctuation only for clear ASR questions") {
-            try expect(LayaPredictionText.normalized("你讲一下这个机制是怎么做的") == "你讲一下这个机制是怎么做的？", "Chinese question cue lost")
-            try expect(LayaPredictionText.normalized("Could you explain the mechanism") == "Could you explain the mechanism?", "English question cue lost")
-            try expect(LayaPredictionText.variants("请问这个实验为什么选择方法比它的延迟是多少毫秒") ==
-                       ["请问这个实验为什么选择方法比它的延迟是多少毫秒？", "请问这个实验为什么选择方法比？"],
-                       "joined Chinese questions were not offered to Laya separately")
-            for statement in ["今天讨论机制的实现", "好的谢谢你的介绍", "他昨天问我为什么服务很慢"] {
-                try expect(LayaPredictionText.normalized(statement) == statement, "statement was punctuated as a question")
-                try expect(LayaPredictionText.variants(statement) == [statement], "statement was split into question candidates")
-            }
         }
         try check("configured distribution URLs precede mirrors and original sources") {
             let base = URL(string: "https://modelscope.cn/models/livecopilot/artifacts/resolve/master")!
@@ -591,6 +575,9 @@ enum CoreChecks {
             let provider = ChatCompletionsProvider(key: "fixture", model: "fixture", endpoint: URL(string: "https://fixture.example/chat/completions")!, transport: FixtureTransport(body: Data(), status: 200, events: broken))
             do { for try await _ in provider.stream(answer) {}; throw CheckError(description: "bad Chat Completion accepted") }
             catch let error as CopilotError { try expect(!error.localizedDescription.contains("must-not-echo"), "raw server error leaked") }
+            catch let error as ServiceHTTPFailure {
+                try expect(error.kind == .service && !error.localizedDescription.contains("must-not-echo"), "stream error category or privacy lost")
+            }
         }
         passed.append("Chat Completions truncated, empty, malformed and error streams fail safely")
         return passed

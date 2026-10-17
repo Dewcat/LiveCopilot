@@ -76,3 +76,18 @@ struct MockReasoningProvider: ReasoningProvider {
         }
     }
 }
+
+/// Files/credentials being present is distinct from successful inference.
+enum ServiceVerification: Equatable {
+    case idle, checking, ready, failed(String)
+    var isReady: Bool { self == .ready }
+    var isChecking: Bool { self == .checking }
+    var message: String {
+        switch self {
+        case .idle: return "Awaiting verification"
+        case .checking: return "Verifying with a test input…"
+        case .ready: return "Verified · ready"
+        case .failed(let message): return message
+        }
+    }
+}

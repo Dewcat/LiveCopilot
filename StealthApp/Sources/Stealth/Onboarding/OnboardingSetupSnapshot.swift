@@ -16,6 +16,7 @@ struct OnboardingSetupInventory {
     var appleFailed = false
     var layaState: LayaRuntimeManager.State = .notInstalled
     var layaInstalled = false
+    var layaDownloadBytes: Int64? = LayaDownloadSize.load()?.totalBytes
     var cloudKeyConfigured = false
 
     @MainActor init(_ coordinator: AppCoordinator) {
@@ -29,6 +30,7 @@ struct OnboardingSetupInventory {
         appleBusy = coordinator.appleSpeech.busy
         appleFailed = coordinator.appleSpeech.failedLanguage == coordinator.settings.appleSpeechLanguage
         layaState = coordinator.laya.state; layaInstalled = coordinator.laya.isInstalled
+        layaDownloadBytes = coordinator.laya.downloadByteCount
         cloudKeyConfigured = coordinator.hasAPIKey
     }
     init() {}
@@ -98,6 +100,10 @@ struct OnboardingSetupSnapshot {
         var speechStatus: OnboardingCapabilityStatus
         var speechName: String
         switch settings.listeningService {
+        case .zipformer:
+            speechName = "Zipformer + VAD"
+            speechStatus = i.localStatus(.terminologySpeech, runtime: i.speechRuntime)
+            if !state.prefersTyping { addLocal(.terminologySpeech, name: speechName) }
         case .paraformer:
             speechName = "Paraformer + VAD"
             speechStatus = i.localStatus(.streamingSpeech, runtime: i.speechRuntime)
@@ -135,7 +141,7 @@ struct OnboardingSetupSnapshot {
         if usesLocalJev && i.layaState == .failed { jevStatus = i.layaInstalled ? .loadFailed : .downloadFailed }
         entries.append(.init(id: .proactive, model: usesLocalJev ? "Laya · Jev Mode" : "GPT-Live · Jev Mode", status: jevEnabled ? jevStatus : .off, enabled: jevEnabled))
         if jevEnabled && usesLocalJev && i.layaState != .unsupported && !i.layaInstalled {
-            downloads.append(.init(kind: .laya, name: ServiceGuide.text("Laya + runtime", "Laya 与运行环境", settings.language), bytes: nil, status: jevStatus))
+            downloads.append(.init(kind: .laya, name: ServiceGuide.text("Laya + runtime", "Laya 与运行环境", settings.language), bytes: i.layaDownloadBytes, status: jevStatus))
         }
         let selectedLocalKinds = downloads.compactMap { resource -> LocalModelKind? in
             if case .local(let kind) = resource.kind { return kind }; return nil

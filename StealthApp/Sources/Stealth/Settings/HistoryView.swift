@@ -1,11 +1,13 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Browse past sessions saved when you stop listening: a master list of sessions
 /// on the left, the full speaker-labelled transcript on the right.
 struct HistoryView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var sessions: SessionStore
+    @State private var exportError: String?
     @State private var selectedID: SessionRecord.ID?
 
     init(coordinator: AppCoordinator) {
@@ -27,7 +29,10 @@ struct HistoryView: View {
         .background { WindowBackgroundView(style: coordinator.settings.background) }
         .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
         .environment(\.locale, coordinator.settings.language.locale)
-        .frame(minWidth: 620, minHeight: 420)
+        .frame(minWidth: 540, minHeight: 360)
+        .onChange(of: sessions.sessions) { _, _ in
+            if selectedID == nil { selectedID = sessions.sessions.first?.id }
+        }
         .onAppear {
             if selectedID == nil { selectedID = sessions.sessions.first?.id }
         }
@@ -60,7 +65,7 @@ struct HistoryView: View {
                 .listStyle(.sidebar)
             }
         }
-        .frame(width: 220)
+        .frame(width: 170)
     }
 
     @ViewBuilder
@@ -78,6 +83,16 @@ struct HistoryView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(session.plainText, forType: .string)
                     } label: { Label(t("Copy"), systemImage: "doc.on.doc") }
+                    Button {
+                        let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]
+                        panel.nameFieldStringValue = session.exportFilename
+                        panel.begin { response in
+                            guard response == .OK, let url = panel.url else { return }
+                            do { try sessions.export(session, to: url); exportError = nil }
+                            catch { exportError = error.localizedDescription }
+                        }
+                    } label: { Label(t("Export"), systemImage: "square.and.arrow.up") }
+                        .accessibilityIdentifier("export-transcript")
                     Button(role: .destructive) {
                         let toDelete = session
                         selectedID = nil
@@ -86,6 +101,7 @@ struct HistoryView: View {
                     } label: { Label(t("Delete"), systemImage: "trash") }
                 }
                 .padding(12)
+                if let error = exportError ?? sessions.lastError { Text(t(error)).font(.caption).foregroundStyle(.red).padding(.horizontal, 12) }
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {

@@ -70,16 +70,14 @@ import Foundation
 
         init(score: Double? = nil, throttle: TimeInterval = 0.02,
              quiet: TimeInterval = 0.04, expiry: TimeInterval = 1,
-             cooldown: TimeInterval = 0, threshold: Double = 0.8,
-             ruleNearMissMargin: Double = 0) {
+             cooldown: TimeInterval = 0, threshold: Double = 0.8) {
             let predictor = Predictor(), sink = Sink()
             predictor.automaticScore = score
             self.predictor = predictor
             self.sink = sink
             controller = LayaTriggerController(predict: { try await predictor.predict($0, $1) },
                                                onTrigger: { sink.receive($0) },
-                                               timing: .init(throttle: throttle, quiet: quiet, expiry: expiry),
-                                               ruleNearMissMargin: ruleNearMissMargin)
+                                               timing: .init(throttle: throttle, quiet: quiet, expiry: expiry))
             controller.onDecision = { sink.decisions.append($0) }
             controller.onError = { sink.errors.append($0) }
             controller.configure(enabled: true, threshold: threshold, cooldown: cooldown)
@@ -194,8 +192,8 @@ import Foundation
             try expect(h.sink.accepted.count == 1, "inclusive default threshold rejected a model decision")
         }
 
-        try await check("near-threshold explicit question waits for silence and dispatches once") {
-            let h = Harness(score: 0.76, ruleNearMissMargin: 0.1); defer { h.close() }
+        try await check("model-approved question waits for silence and dispatches once") {
+            let h = Harness(score: 0.85); defer { h.close() }
             h.controller.setSpeaking(true, speaker: .room)
             h.controller.submit(input("你这个机制是怎么确定时间的", speaker: .room))
             try await until("near-threshold score") { h.sink.decisions.count == 1 }
@@ -204,6 +202,7 @@ import Foundation
             h.controller.setSpeaking(false, speaker: .room)
             try await until("quiet near-threshold dispatch") { h.sink.attempts.count == 1 }
             try expect(h.sink.accepted.count == 1, "explicit question did not dispatch once")
+            h.predictor.automaticScore = 0.76
             h.controller.submit(input("今天讨论这个机制的实现", speaker: .room))
             try await until("statement score") { h.sink.decisions.count == 2 }
             try await pause(0.06)
@@ -318,12 +317,12 @@ import Foundation
             try expect(h.sink.attempts.isEmpty && h.sink.decisions.isEmpty, "own transcript did not invalidate old work")
         }
 
-        try await check("duplicate finals neither debounce nor repeat, including context and punctuation changes") {
+        try await check("duplicate finals neither debounce nor repeat, including punctuation changes") {
             let h = Harness(score: 0.95, quiet: 0.04); defer { h.close() }
             h.controller.submit(input("Explain tradeoffs"))
             try await until("initial decision") { h.sink.decisions.count == 1 }
-            for index in 0..<10 {
-                h.controller.submit(input("  EXPLAIN   tradeoffs！  ", context: "replayed context \(index)"))
+            for _ in 0..<10 {
+                h.controller.submit(input("  EXPLAIN   tradeoffs！  "))
                 h.controller.submit(input("Explain tradeoffs", final: false))
                 try await pause(0.01)
             }
@@ -334,6 +333,33 @@ import Foundation
             h.controller.retryPending()
             try await pause(0.05)
             try expect(h.sink.attempts.count == 1 && h.predictor.calls.count == 1, "handled question was not deduplicated")
+        }
+
+        try await check("same-text context revision invalidates an old score and keeps the original expiry") {
+            let h = Harness(expiry: 0.18); defer { h.close() }
+            h.controller.submit(input("那第二个呢", context: "old context"))
+            try await until("old prediction") { h.predictor.calls.count == 1 }
+            try await pause(0.07)
+            h.controller.submit(input("那第二个呢", context: "revised context"))
+            h.predictor.finish(0, score: 0.99)
+            try await until("revised prediction") { h.predictor.calls.count == 2 }
+            try expect(h.sink.decisions.isEmpty && h.sink.attempts.isEmpty, "obsolete context score escaped")
+            try await pause(0.14)
+            h.predictor.finish(1, score: 0.99)
+            h.controller.retryPending()
+            try await pause(0.03)
+            try expect(h.sink.decisions.isEmpty && h.sink.attempts.isEmpty, "context revision renewed expired work")
+        }
+
+        try await check("imperatives and question marks never override a below-threshold model score") {
+            let h = Harness(score: 0.79, quiet: 0.01); defer { h.close() }
+            for text in ["第一个项目仔细讲一下吧", "介绍一下你的项目", "那第二个呢？", "Could you explain this?"] {
+                let expected = h.predictor.calls.count + 1
+                h.controller.submit(input(text))
+                try await until("semantic decision") { h.predictor.calls.count == expected && h.sink.decisions.count == expected }
+                try await pause(0.03)
+            }
+            try expect(h.sink.attempts.isEmpty, "a sentence-form fallback bypassed the semantic model")
         }
 
         try await check("deduplication preserves decimals and meaningful internal punctuation") {
@@ -449,9 +475,9 @@ import Foundation
             h.sink.busy = true
             h.controller.submit(input("Soon expired request"))
             try await until("busy attempt") { h.sink.attempts.count == 1 }
-            for index in 0..<6 {
+            for _ in 0..<6 {
                 try await pause(0.025)
-                h.controller.submit(input("Soon expired request", context: "duplicate \(index)"))
+                h.controller.submit(input("Soon expired request"))
             }
             h.sink.busy = false
             h.controller.retryPending()
@@ -474,15 +500,17 @@ import Foundation
                        "expired inference escaped or restarted")
         }
 
-        try await check("same utterance reuses score when caption context changes, retaining latest context") {
+        try await check("same utterance rescores when semantic context changes") {
             let h = Harness(); defer { h.close() }
             h.controller.submit(input("Explain this decision", final: false, context: "partial caption context"))
             try await until("partial prediction") { h.predictor.calls.count == 1 }
             h.predictor.finish(0)
             try await until("positive partial") { h.sink.decisions.count == 1 }
             h.controller.submit(input("Explain this decision", context: "committed caption context"))
+            try await until("context prediction") { h.predictor.calls.count == 2 }
+            h.predictor.finish(1)
             try await until("final dispatch") { h.sink.attempts.count == 1 }
-            try expect(h.predictor.calls.count == 1, "unchanged utterance was scored again")
+            try expect(h.predictor.calls.count == 2, "semantic context change reused an old score")
             try expect(h.sink.attempts[0].context == "committed caption context", "answer lost latest context")
         }
 

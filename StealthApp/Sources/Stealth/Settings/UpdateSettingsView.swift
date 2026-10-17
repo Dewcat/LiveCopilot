@@ -81,13 +81,26 @@ struct UpdateBanner: View {
 struct CheckForUpdatesButton: View {
     @ObservedObject var updates: AppUpdateController
     let language: AppLanguage
+    @State private var awaitingResult = false
+    @State private var showsResult = false
     var body: some View {
-        Button { updates.viewUpdate(); if !updates.hasUpdate { updates.checkForUpdates() } } label: {
-            if let release = updates.release, updates.hasUpdate {
-                Label { Text("更新至 \(release.display)") } icon: {
+        Button {
+            if updates.hasUpdate {
+                updates.viewUpdate()
+                if updates.phase != .readyToInstall { updates.downloadUpdate() }
+            } else { awaitingResult = true; updates.checkForUpdates() }
+        } label: {
+            if updates.hasUpdate {
+                Label { Text(updates.phase == .readyToInstall ? "重启并更新" : "下载新版本") } icon: {
                     Image(systemName: "arrow.down.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.blue)
                 }
             } else { Text("检查更新…") }
         }.disabled(!updates.enabled).accessibilityIdentifier("menu-update-entry")
+        .onChange(of: updates.phase) { _, phase in
+            guard awaitingResult else { return }
+            if phase == .upToDate || phase == .failed { awaitingResult = false; showsResult = true }
+            else if phase == .available { awaitingResult = false; updates.viewUpdate() }
+        }
+        .alert("软件更新", isPresented: $showsResult) { Button("好", role: .cancel) {} } message: { Text(updates.statusText) }
     }
 }

@@ -22,6 +22,7 @@ struct OnboardingReadyView: View {
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     private var speechReady: Bool {
         switch coordinator.settings.listeningService {
+        case .zipformer: return models.installed.contains(.terminologySpeech)
         case .paraformer: return models.installed.contains(.streamingSpeech)
         case .apple: return apple.available && apple.installed && !apple.busy
         case .openAI: return coordinator.hasAPIKey && !coordinator.isCheckingKey
@@ -99,11 +100,11 @@ struct OnboardingReadyView: View {
         return coordinator.hasAnswerCredential ? b("Key configured · connection not yet tested", "密钥已配置 · 连接尚未测试") : b("Configure a key to generate answers", "配置密钥后可生成回答")
     }
     private var speechDetail: String {
-        if coordinator.settings.listeningService == .paraformer, models.failures[.streamingSpeech] != nil {
+        if let kind = coordinator.settings.listeningService.localModel, models.failures[kind] != nil {
             return b("Download failed · review and retry", "下载失败 · 可查看并重试")
         }
-        if models.downloading == .streamingSpeech || apple.busy { return b("Downloading · you can continue typing", "下载中 · 可先输入问题") }
-        if models.queued.contains(.streamingSpeech) { return b("Queued for download", "等待下载") }
+        if (models.downloading != nil && models.downloading == coordinator.settings.listeningService.localModel) || apple.busy { return b("Downloading · you can continue typing", "下载中 · 可先输入问题") }
+        if let kind = coordinator.settings.listeningService.localModel, models.queued.contains(kind) { return b("Queued for download", "等待下载") }
         if speechReady { return coordinator.settings.listeningService.isLocal ? b("Resources installed · start to test", "资源已安装 · 开始使用后验证") : b("Cloud key configured · not yet tested", "云端密钥已配置 · 尚未验证语音") }
         return b("Open setup to prepare speech", "前往配置以准备语音识别")
     }

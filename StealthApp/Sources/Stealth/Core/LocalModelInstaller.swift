@@ -7,7 +7,7 @@ enum LocalModelInstaller {
     /// unreachable, truncated or serving different bytes automatically falls through.
     static func candidateURLs(_ item: ModelDownload, distributionBase: URL? = ModelDistribution.baseURL) -> [URL] {
         var addresses: [URL] = []
-        if let distributionBase {
+        if let distributionBase, item.availableOnDistribution {
             let address = item.ossKey.split(separator: "/").reduce(distributionBase) { $0.appendingPathComponent(String($1)) }
             addresses.append(address)
         }
@@ -67,6 +67,14 @@ enum LocalModelInstaller {
     }
     static func download(_ item: ModelDownload, to destination: URL,
                          progress: @escaping @Sendable (Double?, String) -> Void = { _, _ in }) async throws {
+        if item.name == ModelDownload.zipBPE.name,
+           let bundled = Bundle.main.resourceURL?.appendingPathComponent("LocalRuntime/zipformer-bpe.vocab"),
+           FileManager.default.fileExists(atPath: bundled.path) {
+            try item.verify(bundled)
+            try FileManager.default.copyItem(at: bundled, to: destination)
+            progress(1, item.name + " · verified")
+            return
+        }
         let addresses = candidateURLs(item)
         for (index, address) in addresses.enumerated() {
             try Task.checkCancellation()

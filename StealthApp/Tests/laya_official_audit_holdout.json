@@ -1,0 +1,388 @@
+[
+  {
+    "id": "audit-fresh-01",
+    "split": "holdout",
+    "respond": true,
+    "text": "从选型到上线，把整个过程过一遍",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-02",
+    "split": "holdout",
+    "respond": true,
+    "text": "用一个具体的例子说明一下",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-03",
+    "split": "holdout",
+    "respond": true,
+    "text": "请把这个设计的优缺点放在一起比较",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-04",
+    "split": "holdout",
+    "respond": true,
+    "text": "如果流量翻了十倍，你会如何处理",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-05",
+    "split": "holdout",
+    "respond": true,
+    "text": "说一下你在团队里负责哪部分",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-06",
+    "split": "holdout",
+    "respond": true,
+    "text": "这两个指标之间有什么关系",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-07",
+    "split": "holdout",
+    "respond": true,
+    "text": "Explain how you recovered from the outage.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-08",
+    "split": "holdout",
+    "respond": true,
+    "text": "Could you elaborate on the bottleneck?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-09",
+    "split": "holdout",
+    "respond": true,
+    "text": "What did you learn from that failure?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-10",
+    "split": "holdout",
+    "respond": true,
+    "text": "Compare the reliability of these two approaches.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-11",
+    "split": "holdout",
+    "respond": true,
+    "text": "怎么算出来的",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "优化效果如何",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "吞吐量提高了三倍。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-12",
+    "split": "holdout",
+    "respond": true,
+    "text": "失败以后呢",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "服务调用怎么处理",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "失败时会重试三次。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-13",
+    "split": "holdout",
+    "respond": true,
+    "text": "第二种方案也讲讲",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "有几种备选方案",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "考虑了本地缓存和集中缓存。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-14",
+    "split": "holdout",
+    "respond": true,
+    "text": "可以再具体一点吗",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "你负责了什么",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "负责了数据处理部分。",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-15",
+    "split": "holdout",
+    "respond": true,
+    "text": "Why that one?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "Which database did you choose?",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "We chose PostgreSQL.",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-16",
+    "split": "holdout",
+    "respond": true,
+    "text": "And if it times out?",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": [
+        {
+          "speaker": "Them",
+          "text": "How do you handle remote calls?",
+          "handled": true
+        },
+        {
+          "speaker": "You",
+          "text": "The request waits for a response.",
+          "handled": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "audit-fresh-17",
+    "split": "holdout",
+    "respond": false,
+    "text": "下面我先把这个过程过一遍",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-18",
+    "split": "holdout",
+    "respond": false,
+    "text": "同事昨天让我详细介绍了这个设计",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-19",
+    "split": "holdout",
+    "respond": false,
+    "text": "这个例子就不用展开了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-20",
+    "split": "holdout",
+    "respond": false,
+    "text": "刚才的问题已经回答过了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-21",
+    "split": "holdout",
+    "respond": false,
+    "text": "我想先把问题补充完整",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-22",
+    "split": "holdout",
+    "respond": false,
+    "text": "如果流量翻了十倍的话",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-23",
+    "split": "holdout",
+    "respond": false,
+    "text": "你这部分讲得挺清楚",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-24",
+    "split": "holdout",
+    "respond": false,
+    "text": "嗯，我懂你的意思了",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-25",
+    "split": "holdout",
+    "respond": false,
+    "text": "接下来我准备介绍第二种方案",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-26",
+    "split": "holdout",
+    "respond": false,
+    "text": "I will walk you through the deployment.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-27",
+    "split": "holdout",
+    "respond": false,
+    "text": "My colleague asked me to compare the two designs.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-28",
+    "split": "holdout",
+    "respond": false,
+    "text": "Do not answer yet.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-29",
+    "split": "holdout",
+    "respond": false,
+    "text": "The comparison is already in the report.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-30",
+    "split": "holdout",
+    "respond": false,
+    "text": "If the connection drops while",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-31",
+    "split": "holdout",
+    "respond": false,
+    "text": "I understand, thanks.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  },
+  {
+    "id": "audit-fresh-32",
+    "split": "holdout",
+    "respond": false,
+    "text": "The system retries three times before giving up.",
+    "context": {
+      "currentSpeaker": "Room",
+      "recentTurns": []
+    }
+  }
+]

@@ -3,6 +3,80 @@ import SwiftUI
 @testable import LiveCopilot
 
 final class AnalysisSelectionTests: XCTestCase {
+    func testBillingAuthenticationAndRateLimitRemainDistinctAndPrivate() throws {
+        let cases: [(Int, String, OnboardingConnectionFailure)] = [
+            (429, "insufficient_quota", .billing), (429, "credit_balance_exhausted", .billing),
+            (400, "Arrearage", .billing), (403, "insufficient_balance", .billing),
+            (402, "unknown_error", .billing), (429, "rate_limit_exceeded", .rateLimit),
+            (401, "invalid_api_key", .authentication), (400, "expired_api_key", .authentication),
+            (503, "server_error", .service)]
+        for (status, code, expected) in cases {
+            let body = try JSONSerialization.data(withJSONObject: ["error": ["code": code, "message": "sk-private-secret"]])
+            let error = ServiceHTTPFailure(status: status, data: body)
+            XCTAssertEqual(OnboardingConnectionFailure.classify(error), expected)
+            XCTAssertEqual(OnboardingConnectionFailure.classify(CopilotError.message(error.localizedDescription)), expected)
+            XCTAssertFalse(error.localizedDescription.contains("sk-private"))
+            XCTAssertFalse(L10n.text(error.localizedDescription, language: .simplifiedChinese).contains("sk-private"))
+        }
+        let typed = Data(#"{"error":{"type":"insufficient_quota","code":null}}"#.utf8)
+        XCTAssertEqual(ServiceHTTPFailure(status: 429, data: typed).kind, .billing)
+        // Never infer lack of funds from a permission denial or an untrusted message.
+        let arbitrary = Data(#"{"error":{"message":"expired_api_key insufficient_quota sk-private"}}"#.utf8)
+        XCTAssertEqual(ServiceHTTPFailure(status: 403, data: arbitrary).kind, .permission)
+        XCTAssertTrue(OnboardingConnectionFailure.authentication.detail(.simplifiedChinese).contains("过期"))
+        XCTAssertTrue(OnboardingConnectionFailure.billing.detail(.simplifiedChinese).contains("充值"))
+        XCTAssertFalse(OnboardingConnectionFailure.network.detail(.simplifiedChinese).contains("充值"))
+    }
+
+    func testEmbeddingAndStreamingErrorsPreserveProviderCodes() async throws {
+        let body = Data(#"{"error":{"code":"insufficient_quota","message":"private-content"}}"#.utf8)
+        let transport = CredentialFailureTransport(body: body)
+        let embedding = OpenAIEmbeddingProvider(key: "fixture", model: "fixture", transport: transport)
+        do { _ = try await embedding.embed(["Connection test"]); XCTFail("Unexpected success") }
+        catch { XCTAssertEqual(OnboardingConnectionFailure.classify(error), .billing) }
+        let reasoning = OpenAIReasoningProvider(key: "fixture", model: "gpt-6-sol", transport: transport)
+        do { try await AnalysisConnectionProbe.run(provider: reasoning); XCTFail("Unexpected success") }
+        catch { XCTAssertEqual(OnboardingConnectionFailure.classify(error), .billing) }
+        let event: [String: Any] = ["type": "error", "error": ["code": "insufficient_quota", "message": "private-content"]]
+        guard case .failed(let message) = LiveProtocol.parse(event, speaker: .them) else { return XCTFail("Missing failure") }
+        XCTAssertEqual(OnboardingConnectionFailure.classify(CopilotError.message(message)), .billing)
+        XCTAssertFalse(message.contains("private"))
+    }
+
+    @MainActor func testCredentialRowVisualAcceptance() async throws {
+        let output = ProcessInfo.processInfo.environment["LIVECOPILOT_UI_ACCEPTANCE"] ?? ""
+        guard !output.isEmpty, !output.hasPrefix("$(") else { throw XCTSkip("Opt-in credential rendering") }
+        let root = URL(fileURLWithPath: output)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let suite = "LiveCopilot-Credential-Render-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let app = AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults, mockKnowledgeDirectory: root.appendingPathComponent(suite))
+        app.settings.reasoningService = .separateOpenAI
+        try await app.testAnalysisConnection()
+        for language in [AppLanguage.simplifiedChinese, .english] {
+            app.settings.language = language
+            for width: CGFloat in [560, 740] {
+                let view = VStack(alignment: .leading, spacing: 20) {
+                    OnboardingServiceSection(number: 2, title: "API Key") {
+                        CredentialEditor(coordinator: app, analysis: true, onboarding: true, analysisLayout: true)
+                    }
+                    OnboardingConnectionFeedback(language: language, testing: false, verified: false, saved: true, failure: .billing)
+                    OnboardingConnectionFeedback(language: language, testing: false, verified: false, saved: true, failure: .authentication)
+                }.padding(20).frame(width: width).background(Color.white).preferredColorScheme(.light)
+                let host = NSHostingView(rootView: view)
+                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 540), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.contentView = host; host.layoutSubtreeIfNeeded()
+                try await Task.sleep(for: .milliseconds(80)); host.layoutSubtreeIfNeeded()
+                let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: root.appendingPathComponent("credentials-\(language.rawValue)-\(Int(width)).png"))
+                window.orderOut(nil)
+            }
+        }
+        await app.shutdown()
+    }
+
     func testMetricDisplayPrecision() {
         XCTAssertEqual(MetricDisplayFormat.value("1.15", latency: true), "1.2")
         XCTAssertEqual(MetricDisplayFormat.value("2", latency: true), "2.0")
@@ -222,7 +296,7 @@ final class AnalysisSelectionTests: XCTestCase {
     }
 
     func testConnectionFeedbackUsesRealTransportErrorCategories() {
-        for (status, expected) in [(401, OnboardingConnectionFailure.authentication), (403, .permission),
+        for (status, expected) in [(401, OnboardingConnectionFailure.authentication), (403, .permission), (402, .billing),
                                    (404, .model), (422, .parameters), (429, .rateLimit), (503, .service)] {
             XCTAssertThrowsError(try OpenAIHTTP.check(status)) {
                 XCTAssertEqual(OnboardingConnectionFailure.classify($0), expected)
@@ -873,5 +947,17 @@ extension AnalysisSelectionTests {
         XCTAssertFalse(app.hasAnalysisKey)
         XCTAssertEqual(app.settings.reasoningService, .deepSeek)
         await app.shutdown(); defaults.removePersistentDomain(forName: suite)
+    }
+}
+
+private struct CredentialFailureTransport: HTTPTransport {
+    let body: Data
+    func data(for request: URLRequest) async throws -> (Data, Int) { (body, 429) }
+    func lines(for request: URLRequest) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(#"data: {"type":"response.failed","response":{"error":{"code":"insufficient_quota","message":"private-content"}}}"#)
+            continuation.yield("")
+            continuation.finish()
+        }
     }
 }

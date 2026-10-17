@@ -882,3 +882,266 @@ private final class FixtureCredentials: CredentialStorage, @unchecked Sendable {
     }
     func clear(service: String, account: String) throws { _ = lock.withLock { keys.removeValue(forKey: service + "|" + account) } }
 }
+
+@MainActor private final class SpeechConnectionStub: LiveProvider {
+    var onEvent: ((LiveEvent) -> Void)?
+    var initial: LiveEvent?
+    var disconnected = false
+    var audioCount = 0
+    init(_ initial: LiveEvent?) { self.initial = initial }
+    func connect(context: String) { if let initial { onEvent?(initial) } }
+    func sendAudio(_ data: Data) { audioCount += 1 }
+    func appendContext(_ text: String, delegationID: String?) {}
+    func disconnect() async { disconnected = true }
+}
+
+final class SpeechConnectionTests: XCTestCase {
+    func testReconnectHistoryUsesTypedInputMessages() throws {
+        let event = LiveProtocol.start(model: "gpt-live-1", speaker: .them, scenario: .meeting, language: .mixed, context: "Synthetic prior topic")
+        let session = try XCTUnwrap(event["session"] as? [String: Any])
+        let input = try XCTUnwrap(session["input"] as? [[String: Any]])
+        XCTAssertEqual(input.first?["type"] as? String, "message")
+    }
+
+    @MainActor func testReadySessionPassesWithoutSendingAudioAndCloses() async throws {
+        let provider = SpeechConnectionStub(.ready)
+        try await LiveConnectionProbe.run(provider: provider)
+        XCTAssertTrue(provider.disconnected)
+        XCTAssertEqual(provider.audioCount, 0)
+        XCTAssertNil(provider.onEvent)
+    }
+    @MainActor func testAuthenticationFailureIsPreserved() async {
+        let message = LiveProtocol.connectionFailure(status: 401, error: nil).message
+        let provider = SpeechConnectionStub(.failed(message))
+        do {
+            try await LiveConnectionProbe.run(provider: provider)
+            XCTFail("Authentication failure passed verification")
+        } catch { XCTAssertEqual(error.localizedDescription, message) }
+        XCTAssertTrue(provider.disconnected)
+        XCTAssertNil(provider.onEvent)
+    }
+    @MainActor func testEarlyCloseCannotPassVerification() async {
+        let provider = SpeechConnectionStub(.closed(finalized: true))
+        do { try await LiveConnectionProbe.run(provider: provider); XCTFail("Early close passed") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("before the session")) }
+        XCTAssertTrue(provider.disconnected)
+    }
+    @MainActor func testTimeoutAndCancellationCleanUp() async {
+        let provider = SpeechConnectionStub(nil)
+        do { try await LiveConnectionProbe.run(provider: provider, timeout: 0.01); XCTFail("Timeout passed") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("timed out")) }
+        XCTAssertTrue(provider.disconnected)
+        let cancelled = SpeechConnectionStub(nil)
+        let task = Task { try await LiveConnectionProbe.run(provider: cancelled) }
+        task.cancel()
+        do { try await task.value; XCTFail("Cancellation passed") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertTrue(cancelled.disconnected)
+        XCTAssertNil(cancelled.onEvent)
+    }
+    func testHTTPFailuresStopRetryingCredentialsAndPreserveActionableReason() {
+        for code in [400, 401, 403, 404, 429] {
+            let failure = LiveProtocol.connectionFailure(status: code, error: URLError(.badServerResponse))
+            XCTAssertFalse(failure.retry)
+            XCTAssertTrue(failure.message.contains("HTTP \(code)"))
+        }
+        XCTAssertTrue(LiveProtocol.connectionFailure(status: 503, error: nil).retry)
+        XCTAssertTrue(LiveProtocol.connectionFailure(status: nil, error: URLError(.timedOut)).retry)
+    }
+}
+
+private final class EmbeddingConnectionStub: EmbeddingProvider {
+    let model = "test-embedding"
+    var inputs: [String] = []
+    let result: Result<[[Float]], Error>
+    init(_ result: Result<[[Float]], Error>) { self.result = result }
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        inputs = texts
+        return try result.get()
+    }
+}
+final class EmbeddingConnectionTests: XCTestCase {
+    func testOnlySyntheticTextIsSent() async throws {
+        let provider = EmbeddingConnectionStub(.success([[0.1, 0.2]]))
+        try await EmbeddingConnectionProbe.run(provider: provider)
+        XCTAssertEqual(provider.inputs, ["Connection test"])
+    }
+    func testEmptyOrInvalidResponseCannotPass() async {
+        for vectors: [[Float]] in [[], [[]], [[.nan]], [[1], [2]]] {
+            let provider = EmbeddingConnectionStub(.success(vectors))
+            do { try await EmbeddingConnectionProbe.run(provider: provider); XCTFail("Invalid vectors passed") }
+            catch { XCTAssertTrue(error.localizedDescription.contains("embedding vectors")) }
+        }
+    }
+    func testFailureAndCancellationAreNotReportedAsSuccess() async {
+        let provider = EmbeddingConnectionStub(.failure(CopilotError.message("HTTP 401")))
+        do { try await EmbeddingConnectionProbe.run(provider: provider); XCTFail("Authentication failure passed") }
+        catch { XCTAssertEqual(error.localizedDescription, "HTTP 401") }
+        let task = Task {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            try await EmbeddingConnectionProbe.run(provider: EmbeddingConnectionStub(.success([[1]])))
+        }
+        task.cancel()
+        do { try await task.value; XCTFail("Cancellation passed") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
+}
+
+final class KnowledgeVerificationTests: XCTestCase {
+    private func fixture(_ root: URL) throws {
+        let directory = LocalModelKind.embedding.location(in: root)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let data = Data("fixture".utf8)
+        try data.write(to: directory.appendingPathComponent("bge-m3-Q8_0.gguf"))
+        try JSONEncoder().encode(["bge-m3-Q8_0.gguf": data.count]).write(to: directory.appendingPathComponent("installed.json"))
+    }
+    @MainActor func testDownloadDoesNotBecomeReadyUntilInferenceCompletes() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var calls = 0
+        let manager = LocalModelManager(root: root, embeddingVerifier: { _ in
+            calls += 1
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }, installation: { _, root in try self.fixture(root) })
+        manager.install(.embedding)
+        for _ in 0..<100 where !manager.embeddingVerification.isChecking { try await Task.sleep(nanoseconds: 1_000_000) }
+        XCTAssertTrue(manager.installed.contains(.embedding))
+        XCTAssertEqual(manager.embeddingVerification, .checking)
+        XCTAssertFalse(manager.embeddingVerification.isReady)
+        for _ in 0..<200 where manager.downloading != nil { try await Task.sleep(nanoseconds: 2_000_000) }
+        XCTAssertTrue(manager.embeddingVerification.isReady)
+        XCTAssertEqual(calls, 1)
+        await manager.shutdown()
+    }
+    @MainActor func testFailedValidationPreservesFilesAndRetriesWithoutDownload() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try fixture(root)
+        var attempts = 0
+        let manager = LocalModelManager(root: root, embeddingVerifier: { _ in
+            attempts += 1
+            if attempts == 1 { throw CopilotError.message("Load failed") }
+        })
+        XCTAssertEqual(manager.embeddingVerification, .idle)
+        await manager.verifyEmbedding()
+        XCTAssertEqual(manager.embeddingVerification, .failed("Load failed"))
+        XCTAssertTrue(manager.installed.contains(.embedding))
+        await manager.verifyEmbedding()
+        XCTAssertTrue(manager.embeddingVerification.isReady)
+        XCTAssertEqual(attempts, 2)
+        manager.remove(.embedding)
+        XCTAssertEqual(manager.embeddingVerification, .idle)
+        XCTAssertFalse(manager.installed.contains(.embedding))
+    }
+    @MainActor func testCancelVerificationNeverMarksReady() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try fixture(root)
+        let manager = LocalModelManager(root: root, embeddingVerifier: { _ in try await Task.sleep(nanoseconds: 5_000_000_000) })
+        let task = Task { await manager.verifyEmbedding() }
+        for _ in 0..<100 where !manager.embeddingVerification.isChecking { try await Task.sleep(nanoseconds: 1_000_000) }
+        task.cancel(); await task.value
+        XCTAssertEqual(manager.embeddingVerification, .idle)
+        XCTAssertTrue(manager.installed.contains(.embedding))
+    }
+    func testTermsPreservePhrasesAndCleanEmptyDuplicateAndUnicodeEntries() throws {
+        let terms = ProfessionalTerms.clean(" Vue\r\nvue\n\n机器学习\nReact Native\nNext.js\nC++\nGPT-6 模型\nCafé\nCafe\u{301}\n")
+        XCTAssertEqual(terms, ["Vue", "机器学习", "React Native", "Next.js", "C++", "GPT-6 模型", "Café"])
+        var settings = AppSettings(); settings.professionalTerms = terms
+        let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(restored.professionalTerms, terms)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8)).professionalTerms, ProfessionalTerms.examples)
+        settings.professionalTerms = []
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings)).professionalTerms, [])
+        XCTAssertFalse(ProfessionalTerms.supportsNativeEnhancement(.paraformer), "Shipped Paraformer must never claim hotword support")
+    }
+}
+
+private struct DelayedVerificationEmbedding: EmbeddingProvider {
+    let model = "test-embedding"
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        try await Task.sleep(nanoseconds: 100_000_000)
+        return [[1, 2]]
+    }
+}
+extension KnowledgeVerificationTests {
+    @MainActor private func app(_ provider: any EmbeddingProvider) -> AppCoordinator {
+        let suite = "LiveCopilot-Knowledge-Verification-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        var settings = AppSettings(); settings.embeddingService = .openAI; settings.save(defaults: defaults)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
+        return AppCoordinator(mock: true, emitMockConversation: false, mockDefaults: defaults,
+                              mockEmbedding: provider, mockKnowledgeDirectory: root)
+    }
+    @MainActor func testCloudCredentialsAreNotEquivalentToVerifiedModel() async throws {
+        let coordinator = app(EmbeddingConnectionStub(.success([[1, 2]])))
+        XCTAssertTrue(coordinator.hasAPIKey)
+        XCTAssertFalse(coordinator.isKnowledgeServiceVerified)
+        try await coordinator.testEmbeddingConnection()
+        XCTAssertTrue(coordinator.isKnowledgeServiceVerified)
+        coordinator.settings.embeddingModel = "another-model"
+        XCTAssertFalse(coordinator.isKnowledgeServiceVerified)
+        await coordinator.shutdown()
+    }
+    @MainActor func testCloudFailureRemainsUnconfigured() async {
+        let coordinator = app(EmbeddingConnectionStub(.failure(CopilotError.message("HTTP 401"))))
+        do { try await coordinator.testEmbeddingConnection(); XCTFail("Invalid key passed") }
+        catch { XCTAssertEqual(error.localizedDescription, "HTTP 401") }
+        XCTAssertFalse(coordinator.isKnowledgeServiceVerified)
+        XCTAssertEqual(coordinator.embeddingVerification, .failed("HTTP 401"))
+        await coordinator.shutdown()
+    }
+    @MainActor func testModelSwitchDiscardsPendingSuccessAndRequiresReindex() async throws {
+        let coordinator = app(DelayedVerificationEmbedding())
+        let task = Task { try await coordinator.testEmbeddingConnection() }
+        for _ in 0..<100 where !coordinator.embeddingVerification.isChecking { try await Task.sleep(nanoseconds: 1_000_000) }
+        coordinator.settings.embeddingService = .local
+        do { try await task.value; XCTFail("Stale configuration passed") } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(coordinator.embeddingVerification, .idle)
+        coordinator.knowledgeDocuments = [.init(id: "test", name: "test.txt", importedAt: Date(), localPath: "test.txt", status: "Ready", chunkCount: 1, embeddingModel: "text-embedding-3-small")]
+        XCTAssertTrue(coordinator.knowledgeNeedsReindex)
+        coordinator.knowledgeDocuments[0].embeddingModel = LocalModelKind.embeddingIdentity
+        XCTAssertFalse(coordinator.knowledgeNeedsReindex)
+        await coordinator.shutdown()
+    }
+}
+
+final class TerminologyTests: XCTestCase {
+    func testCapabilityPersistenceAndLegacySettings() throws {
+        XCTAssertTrue(ProfessionalTerms.supportsNativeEnhancement(.zipformer))
+        XCTAssertFalse(ProfessionalTerms.supportsNativeEnhancement(.paraformer))
+        XCTAssertFalse(ProfessionalTerms.supportsNativeEnhancement(.apple))
+        var settings = AppSettings()
+        settings.listeningService = .zipformer
+        settings.professionalTermsEnabled = false
+        let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(restored.listeningService, .zipformer)
+        XCTAssertFalse(restored.professionalTermsEnabled)
+        XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: Data("{\"listeningService\":\"paraformer\"}".utf8)).listeningService, .paraformer)
+    }
+    func testTermsNormalizePhrasesAndRejectUnsupportedCharacters() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let symbols = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ机器学习")
+        try symbols.enumerated().map { "\($0.element) \($0.offset)" }.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ProfessionalTerms.recognitionTerms(["React Native", "Next.js", "机器学习", "Vue", "vue", "🦊", "𰻞", "TypeScript"], tokensURL: url), ["REACT NATIVE", "NEXT JS", "机器学习", "VUE", "TYPESCRIPT"])
+        XCTAssertTrue(ProfessionalTerms.recognitionTerms([String(repeating: "A", count: 101)], tokensURL: url).isEmpty)
+        let terms = (1...101).map { String(repeating: "A", count: $0) }
+        XCTAssertEqual(ProfessionalTerms.recognitionTerms(terms, tokensURL: url).count, 100)
+    }
+    func testPinnedDownloadRoutesAndIndependentInstallation() {
+        let kind = LocalModelKind.terminologySpeech
+        XCTAssertNotEqual(kind.directory, LocalModelKind.streamingSpeech.directory)
+        XCTAssertEqual(kind.downloads.compactMap(\.knownByteCount).reduce(0, +), kind.estimatedDownloadBytes)
+        for item in [ModelDownload.zipEncoder, .zipDecoder, .zipJoiner, .zipTokens] {
+            let routes = LocalModelInstaller.candidateURLs(item, distributionBase: URL(string: "https://unpublished.example/models"))
+            XCTAssertEqual(routes.first?.host, "modelscope.cn")
+            XCTAssertEqual(routes.dropFirst().first?.host, "huggingface.co")
+            XCTAssertTrue(routes.contains { $0.host == "hf-mirror.com" })
+            XCTAssertFalse(routes.contains { $0.host == "unpublished.example" })
+            XCTAssertEqual(item.sha256.count, 64)
+        }
+        XCTAssertEqual(ModelDownload.zipDecoder.installedName, "decoder.onnx")
+    }
+}

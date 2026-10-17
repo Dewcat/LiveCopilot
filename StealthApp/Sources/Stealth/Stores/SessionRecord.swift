@@ -40,6 +40,14 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         self.lines = lines
     }
 
+    var transcriptDocument: String {
+        let formatter = ISO8601DateFormatter()
+        return "LiveCopilot · Transcript draft / 转写文稿\n" + formatter.string(from: startedAt) + " — " + formatter.string(from: endedAt) + "\n\n" + plainText + "\n"
+    }
+    var exportFilename: String {
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return "LiveCopilot-" + formatter.string(from: startedAt) + ".txt"
+    }
     var lineCount: Int { lines.count }
 
     var duration: TimeInterval { max(0, endedAt.timeIntervalSince(startedAt)) }

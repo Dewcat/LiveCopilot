@@ -80,7 +80,16 @@ final class TranscriptStore: ObservableObject {
     }
 
     private var lastFragmentEnd: [Speaker: Int] = [:]
+    private var fragmentsByLine: [UUID: [TranscriptFragment]] = [:]
+    private var fragmentLine: [String: UUID] = [:]
     func ingest(_ fragment: TranscriptFragment) {
+        if let lineID = fragmentLine[fragment.id], let index = lines.firstIndex(where: { $0.id == lineID }),
+           var parts = fragmentsByLine[lineID], let part = parts.firstIndex(where: { $0.id == fragment.id }) {
+            parts[part] = fragment; fragmentsByLine[lineID] = parts
+            let old = lines[index]
+            lines[index] = TranscriptLine(id: old.id, speaker: old.speaker, at: old.at, content: parts.map(\.text).joined())
+            return
+        }
         if let last = lines.last, last.speaker == fragment.speaker,
            let end = lastFragmentEnd[fragment.speaker], fragment.startMS >= end,
            fragment.startMS - end < 1600, last.content.count < 1800 {
@@ -88,10 +97,17 @@ final class TranscriptStore: ObservableObject {
         } else {
             lines = Array((lines + [TranscriptLine(speaker: fragment.speaker, at: fragment.receivedAt, content: fragment.text)]).suffix(Config.transcriptLineLimit))
         }
+        if let id = lines.last?.id {
+            fragmentsByLine[id, default: []].append(fragment); fragmentLine[fragment.id] = id
+        }
+        let retained = Set(lines.map(\.id))
+        fragmentsByLine = fragmentsByLine.filter { retained.contains($0.key) }
+        fragmentLine = fragmentLine.filter { retained.contains($0.value) }
         lastFragmentEnd[fragment.speaker] = fragment.endMS
     }
 
     func clear() {
+        fragmentsByLine = [:]; fragmentLine = [:]
         lastFragmentEnd = [:]
         lines = []
         partialThem = ""

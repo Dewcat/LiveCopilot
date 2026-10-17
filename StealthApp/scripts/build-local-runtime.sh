@@ -28,4 +28,7 @@ xcrun clang++ -std=c++17 -fobjc-arc -O2 -arch arm64 -arch x86_64 -mmacosx-versio
 for binary in "$runtime/libonnxruntime.dylib" "$runtime/libsherpa-onnx-c-api.dylib" "$runtime/llama.framework" "$runtime/livecopilot-inference"; do
   codesign --force --sign - "$binary" >/dev/null 2>&1
 done
+cp Native/Models/zipformer-bpe.vocab "$runtime/zipformer-bpe.vocab"
+cp Native/Models/LICENSE "$runtime/LICENSE-zipformer.txt"
+cp Native/Models/README.md "$runtime/NOTICE-zipformer.txt"
 echo 'Native local inference runtime ready (arm64 + x86_64).'

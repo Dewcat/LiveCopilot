@@ -13,7 +13,9 @@ final class SessionStore: ObservableObject {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init() {
+    private let root: URL
+    init(root: URL? = nil) {
+        self.root = root ?? AppPaths.dataDirectory().appendingPathComponent("sessions", isDirectory: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -28,7 +30,7 @@ final class SessionStore: ObservableObject {
 
     /// Directory holding the per-session JSON files. Created on demand.
     private var directory: URL? {
-        let dir = AppPaths.dataDirectory().appendingPathComponent("sessions", isDirectory: true)
+        let dir = root
         if !fileManager.fileExists(atPath: dir.path) {
             do {
                 try fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -61,7 +63,15 @@ final class SessionStore: ObservableObject {
             do { try fileManager.removeItem(at: url) }
             catch { lastError = "Could not delete session history. Check disk permissions."; return }
         }
+        if let url = directory?.appendingPathComponent(record.id.uuidString + ".txt"), fileManager.fileExists(atPath: url.path) {
+            do { try fileManager.removeItem(at: url) } catch { lastError = "Could not delete transcript draft." }
+        }
         sessions = sessions.filter { $0.id != record.id }
+    }
+
+    func export(_ record: SessionRecord, to url: URL) throws {
+        try Data(record.transcriptDocument.utf8).write(to: url, options: .atomic)
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     // MARK: - Disk
@@ -76,6 +86,9 @@ final class SessionStore: ObservableObject {
             let data = try encoder.encode(record)
             try data.write(to: url, options: .atomic)
             try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            lastError = nil
+            do { try export(record, to: url.deletingPathExtension().appendingPathExtension("txt")) }
+            catch { lastError = "Session saved; transcript draft could not be written. You can export it from History." }
             return true
         } catch {
             lastError = "Session history could not be saved. Check available disk space and permissions."

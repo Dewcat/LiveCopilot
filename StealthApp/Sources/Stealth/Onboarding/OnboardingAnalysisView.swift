@@ -2,22 +2,12 @@ import SwiftUI
 
 struct OnboardingAnalysisView: View {
     @ObservedObject var coordinator: AppCoordinator
-    @State private var testTask: Task<Void, Never>?
-    @State private var testID = UUID()
-    @State private var testing = false
-    @State private var failure: OnboardingConnectionFailure?
     @State private var credentialsTop = CGFloat.zero
     @State private var usedScrollShortcut = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, coordinator.settings.language) }
     private var locked: Bool { coordinator.isRunning || coordinator.isTransitioning }
     private var shared: Bool { coordinator.settings.reasoningService == .sharedOpenAI }
-    private var connectionIdentity: String {
-        [coordinator.settings.reasoningService.rawValue, coordinator.settings.analysisModel,
-         (try? coordinator.settings.analysisCredentialReference().accountSuffix) ?? "invalid",
-         coordinator.settings.reasoningEffort, coordinator.settings.analysisProcessing.rawValue, coordinator.settings.deepSeekEffort,
-         coordinator.settings.presetConnection?.thinking.rawValue ?? ""].joined(separator: "|")
-    }
     var body: some View {
         GeometryReader { geometry in
             ScrollViewReader { proxy in
@@ -48,53 +38,17 @@ struct OnboardingAnalysisView: View {
                 }
             }
         }
-        .onChange(of: connectionIdentity) { _, _ in cancelTest() }
-        .onChange(of: coordinator.answerCredentialRevision) { _, _ in cancelTest() }
-        .onDisappear { cancelTest() }
     }
     private var credentials: some View {
         OnboardingServiceSection(number: 2, title: b("API Key & connection test", "API Key 与连接测试")) {
             if (try? coordinator.settings.analysisCredentialReference()) != nil {
-                CredentialEditor(coordinator: coordinator, analysis: !shared, onboarding: true)
+                CredentialEditor(coordinator: coordinator, analysis: !shared, onboarding: true, analysisLayout: true)
                     .id(coordinator.settings.reasoningService.rawValue + "|" + ((try? coordinator.settings.analysisCredentialReference().account) ?? "invalid"))
-                    .disabled(locked || testing)
+                    .disabled(locked)
             } else {
                 Label(b("Save a valid service address in Connection address first.", "请先在连接地址中保存有效的服务地址。"), systemImage: "info.circle")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            Divider()
-            HStack(spacing: 10) {
-                Button(b("Test connection", "测试连接")) { test() }
-                    .disabled(testing || coordinator.isCheckingKey || coordinator.isCheckingAnalysisKey || !coordinator.hasAnswerCredential || coordinator.settings.analysisModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (try? coordinator.settings.analysisCredentialReference()) == nil || locked)
-                    .accessibilityIdentifier("onboarding-test-connection")
-                if testing {
-                    ProgressView().controlSize(.small)
-                    Button(b("Cancel", "取消")) { cancelTest() }
-                }
-            }
-            OnboardingConnectionFeedback(language: coordinator.settings.language, testing: testing,
-                                         verified: coordinator.isAnalysisConnectionVerified,
-                                         saved: coordinator.hasAnswerCredential, mock: coordinator.isMock, failure: failure)
-            Text(b("Testing sends one short example question, without your conversation or documents, and may incur API charges.", "测试仅发送一条简短示例问题，不附带对话或资料，可能产生 API 费用。"))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-    private func cancelTest() {
-        testID = UUID(); testTask?.cancel(); testTask = nil
-        testing = false; failure = nil
-    }
-    private func test() {
-        cancelTest(); testing = true
-        let id = testID
-        testTask = Task {
-            do {
-                try await coordinator.testAnalysisConnection()
-                guard !Task.isCancelled, testID == id else { return }
-            } catch {
-                guard !Task.isCancelled, testID == id else { return }
-                failure = .classify(error)
-            }
-            if testID == id { testing = false; testTask = nil }
         }
     }
 }
@@ -111,12 +65,16 @@ struct OnboardingConnectionFeedback: View {
     let saved: Bool
     var mock = false
     var failure: OnboardingConnectionFailure?
+    var compact = false
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, language) }
     private var success: Bool { verified && !testing && failure == nil }
     private var title: String {
         if testing { return b("Testing connection…", "正在测试连接…") }
         if let failure { return failure.title(language) }
-        if verified { return mock ? b("Preview test passed · no API call", "预览测试通过 · 未调用 API") : b("Connection verified · ready to continue", "连接测试成功 · 可以继续") }
+        if verified {
+            if compact { return mock ? b("Preview passed", "预览通过") : b("Connected", "连接成功") }
+            return mock ? b("Preview test passed · no API call", "预览测试通过 · 未调用 API") : b("Connection verified · ready to continue", "连接测试成功 · 可以继续")
+        }
         return saved ? b("Key saved · connection not yet verified", "密钥已保存 · 连接待测试") : b("Not configured · you can set up later", "尚未配置 · 可以稍后设置")
     }
     var body: some View {
@@ -124,7 +82,7 @@ struct OnboardingConnectionFeedback: View {
             Label(title, systemImage: success ? "checkmark.circle.fill" : failure != nil ? "exclamationmark.circle" : "info.circle")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(success ? Color.green : failure != nil ? Color.orange : Color.secondary)
-            if let failure { Text(failure.detail(language)).font(.caption).foregroundStyle(.secondary) }
+            if let failure, !compact { Text(failure.detail(language)).font(.caption).foregroundStyle(.secondary) }
         }.fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("onboarding-connection-result")
     }
 }
@@ -132,6 +90,7 @@ struct OnboardingConnectionFeedback: View {
 struct OnboardingServiceSection<Content: View>: View {
     let number: Int
     let title: String
+    var showsBorder = true
     @ViewBuilder let content: () -> Content
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -144,7 +103,7 @@ struct OnboardingServiceSection<Content: View>: View {
             content()
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(nsColor: .windowBackgroundColor).opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.045)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(showsBorder ? 0.045 : 0)))
             .accessibilityElement(children: .contain)
     }
 }

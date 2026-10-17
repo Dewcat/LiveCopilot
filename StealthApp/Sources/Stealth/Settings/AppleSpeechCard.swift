@@ -8,23 +8,41 @@ struct AppleSpeechCard: View {
     var permitsDownload = true
     private func b(_ en: String, _ zh: String) -> String { ServiceGuide.text(en, zh, interfaceLanguage) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Picker(b("Recognition language", "识别语言"), selection: $language) {
-                Text(b("Mandarin Chinese", "普通话")).tag(AppleSpeechLanguage.chinese)
-                Text(b("English (US)", "英语（美国）")).tag(AppleSpeechLanguage.english)
-            }.disabled(locked || manager.busy).accessibilityIdentifier("apple-speech-language")
-            Label(L10n.text(manager.message, language: interfaceLanguage), systemImage: manager.installed ? "checkmark.circle.fill" : "arrow.down.circle")
-                .foregroundStyle(manager.installed ? .green : .secondary).font(.callout)
+        VStack(alignment: .leading, spacing: 16) {
+            Text(b("Apple local speech recognition", "Apple 本机语音识别")).font(.headline)
+            Text(b("Built-in macOS speech recognition with real-time transcription and offline operation. Suitable for meetings and interviews primarily in Chinese or English.", "使用 macOS 内置语音识别能力，支持实时转写和离线运行。适合以中文或英文为主的会议与面试。"))
+                .font(.callout).foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(b("Recognition language", "识别语言")).font(.callout).foregroundStyle(.secondary)
+                    Picker(b("Recognition language", "识别语言"), selection: $language) {
+                        Text(b("Mandarin Chinese", "普通话")).tag(AppleSpeechLanguage.chinese)
+                        Text(b("English (US)", "英语（美国）")).tag(AppleSpeechLanguage.english)
+                    }.labelsHidden().fixedSize().disabled(locked || manager.busy)
+                        .accessibilityIdentifier("apple-speech-language")
+                }
+                Spacer(minLength: 0)
+                Label(manager.installed && !manager.busy ? b("Ready · available offline", "已就绪 · 离线可用") : L10n.text(manager.message, language: interfaceLanguage),
+                      systemImage: manager.installed && !manager.busy ? "checkmark.circle" : "arrow.down.circle")
+                    .font(.callout).foregroundStyle(manager.installed && !manager.busy ? .green : .secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(manager.installed && !manager.busy ? Color.green.opacity(0.1) : Color.secondary.opacity(0.08), in: Capsule())
+            }
+            Label(b("Only the selected language is recognized; automatic Chinese/English switching is not supported. Use Paraformer for mixed-language speech.", "当前仅识别所选语言，不支持自动切换中英文。混合语言场景建议使用 Paraformer。"), systemImage: "info.circle")
+                .font(.callout).foregroundStyle(.secondary)
+            Divider().padding(.vertical, 4)
+            Text(b("Models are managed by macOS. No API Key or speech recognition API fees are required.", "模型由 macOS 管理，无需 API Key，不产生语音识别 API 费用。"))
+                .font(.caption).foregroundStyle(.secondary)
             HStack {
+                Text("Apple SpeechAnalyzer · macOS 26+").font(.caption).foregroundStyle(.tertiary)
+                Spacer()
                 if manager.busy { ProgressView().controlSize(.small); Button(b("Cancel", "取消")) { manager.cancel() } }
                 else if !manager.installed {
                     Button(b("Download language", "下载语言资源")) { manager.install(language) }.disabled(locked || !manager.available || !permitsDownload)
                 }
-                Button(b("Refresh status", "刷新状态")) { Task { await manager.refresh(language) } }.disabled(manager.busy)
+                Button(b("Check again", "重新检测")) { Task { await manager.refresh(language) } }.disabled(manager.busy)
             }
-            Text(b("Local / no API fee. Apple manages the model files; after downloading, speech recognition runs offline. This language setting is independent of the interface language.", "本地 / 无 API 费用。模型文件由 Apple 管理，下载后语音识别离线运行。识别语言与界面语言分别设置。")).font(.caption).foregroundStyle(.secondary)
-            Text(b("Apple ASR uses a single recognition language. Switching answer language does not change ASR. For mixed Chinese/English, use the existing bilingual Paraformer or GPT-Live Mixed option.", "Apple ASR 使用单一识别语言，切换回答语言不会改变转写语言。中英混合场景请使用现有的双语 Paraformer 或 GPT-Live 中英混合选项。")).font(.caption).foregroundStyle(.secondary)
-        }.padding(14).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        }.padding(16).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
             .task(id: language) { await manager.refresh(language) }
     }
 }

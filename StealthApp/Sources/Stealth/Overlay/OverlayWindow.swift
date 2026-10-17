@@ -206,7 +206,7 @@ final class OverlayWindow: NSPanel {
     private func fitHeight(animated: Bool) {
         guard let display = displayScreen else { return }
         let fitted = OverlayLayout.fitted(frame, height: max(minSize.height, autoHeight ? desiredHeight : frame.height),
-                                         visible: display.visibleFrame, docked: edgeHide)
+                                         visible: display.visibleFrame, docked: edgeHide, minimumHeight: minSize.height)
         guard fitted != frame else { return }
         // Keep the top edge stable. Hidden content can grow without revealing the window.
         // Overlapping NSWindow frame animations can leave the hosting view at an

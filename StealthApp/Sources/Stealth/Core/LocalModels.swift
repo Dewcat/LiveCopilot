@@ -2,19 +2,21 @@ import Foundation
 import CryptoKit
 
 enum ListeningService: String, Codable, CaseIterable, Identifiable {
-    case openAI, apple, paraformer
+    case zipformer, paraformer, apple, openAI
     var id: String { rawValue }
     var label: String {
         switch self {
         case .openAI: return "OpenAI · GPT-Live"
         case .apple: return "Apple · on-device speech"
         case .paraformer: return "Local · Paraformer-zh-streaming"
+        case .zipformer: return "Local · Zipformer · terminology"
         }
     }
     var localModel: LocalModelKind? {
         switch self {
         case .openAI, .apple: return nil
         case .paraformer: return .streamingSpeech
+        case .zipformer: return .terminologySpeech
         }
     }
     init(from decoder: Decoder) throws {
@@ -38,23 +40,26 @@ enum EmbeddingService: String, Codable, CaseIterable, Identifiable {
 }
 
 enum LocalModelKind: String, CaseIterable, Identifiable, Sendable {
-    case streamingSpeech, embedding
+    case streamingSpeech, embedding, terminologySpeech
     var id: String { rawValue }
     var title: String {
         switch self {
         case .streamingSpeech: return "Paraformer-zh-streaming + Silero VAD"
+        case .terminologySpeech: return "Zipformer + Silero VAD"
         case .embedding: return "BGE-M3 · Q8"
         }
     }
     var directory: String {
         switch self {
         case .streamingSpeech: return "paraformer-streaming-zh-en-int8-v1"
+        case .terminologySpeech: return "zipformer-streaming-zh-en-hotwords-v1"
         case .embedding: return "bge-m3-q8-v1"
         }
     }
     var downloadSize: String {
         switch self {
         case .streamingSpeech: return "238 MB"
+        case .terminologySpeech: return "200 MB"
         case .embedding: return "635 MB"
         }
     }
@@ -64,12 +69,14 @@ enum LocalModelKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .streamingSpeech: return 165_462_184 + 71_664_561 + 75_756 + 643_854
         case .embedding: return 634_553_760
+        case .terminologySpeech: return 181_895_032 + 13_876_452 + 3_228_404 + 56_317 + 12_564 + 643_854
         }
     }
     var downloads: [ModelDownload] {
         switch self {
         case .streamingSpeech: return [.paraformerEncoder, .paraformerDecoder, .paraformerTokens, .vad]
         case .embedding: return [.bge]
+        case .terminologySpeech: return [.zipEncoder, .zipDecoder, .zipJoiner, .zipTokens, .zipBPE, .vad]
         }
     }
     static let embeddingIdentity = "local:bge-m3:q8_0:950f4a8e5e19:cls:l2:v1"
@@ -77,6 +84,7 @@ enum LocalModelKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .streamingSpeech: return ["encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt", "silero_vad.onnx"]
         case .embedding: return ["bge-m3-Q8_0.gguf"]
+        case .terminologySpeech: return ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt", "bpe.vocab", "silero_vad.onnx"]
         }
     }
     func location(in root: URL) -> URL { root.appendingPathComponent(directory, isDirectory: true) }
@@ -99,6 +107,7 @@ struct ModelDownload: Sendable {
     let name: String
     var installedName: String? = nil
     var ossObjectKey: String? = nil
+    var availableOnDistribution = true
     /// Pinned extra sources for this file, tried after the configured distribution and before generic host mirrors.
     /// Used when a mirror serves the identical object under a different host and path.
     var mirrors: [URL] = []
@@ -119,6 +128,21 @@ struct ModelDownload: Sendable {
     static let vad = Self(
         url: URL(string: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx")!,
         sha256: "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6", name: "silero_vad.onnx")
+    // Matching immutable revisions on ModelScope and Hugging Face. Same hashes on every route.
+    private static let zipHF = "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/98590b7ed6443e77b714204da2757d75e1a642f4/"
+    private static let zipMS = "https://modelscope.cn/models/pkufool/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/fe4123ca09cd7efaef00fe0ed88219211bc5b77e/"
+    private static func zip(_ file: String, installed: String, hash: String, modelScope: Bool = true) -> Self {
+        Self(url: URL(string: zipHF + file)!, sha256: hash, name: "zipformer-" + file,
+             installedName: installed, availableOnDistribution: false,
+             mirrors: modelScope ? [URL(string: zipMS + file)!, URL(string: zipHF + file)!] : [])
+    }
+    static let zipEncoder = zip("encoder-epoch-99-avg-1.int8.onnx", installed: "encoder.int8.onnx", hash: "8fa764187a261844f859d7143ebaa563af5d10adfece4c18a8f414c88cba2a9b")
+    // Keep decoder FP32, as recommended by the model's official int8 example.
+    static let zipDecoder = zip("decoder-epoch-99-avg-1.onnx", installed: "decoder.onnx", hash: "2e3b5ec371f8899ee6acd829fd753ba45772df57a91bdf37cde3136354e7db7d")
+    static let zipJoiner = zip("joiner-epoch-99-avg-1.int8.onnx", installed: "joiner.int8.onnx", hash: "1ed689c5ed19dbaa725d9d191bb4822b5f4855a39e1ffd28cbc1f340d25b2ee0")
+    static let zipTokens = zip("tokens.txt", installed: "tokens.txt", hash: "a8e0e4ec53810e433789b54a5c0134a7eaa2ffca595a6334d54c00da858841d3")
+    // Tiny vocabulary is also bundled, so mainland installs need no overseas request for it.
+    static let zipBPE = zip("bpe.vocab", installed: "bpe.vocab", hash: "d0b642f3a2eacd5fadefdeff9e0e1358cab729647cbb7fe58cf738e1f7407029", modelScope: false)
     static let bge = Self(
         url: URL(string: "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/2d48f1737679ad900d5c26c5aad5410e9c70fdca/bge-m3-Q8_0.gguf")!,
         sha256: "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167", name: "bge-m3-Q8_0.gguf",
@@ -126,6 +150,9 @@ struct ModelDownload: Sendable {
     /// Exact object lengths in docs/oss-model-manifest.json, keyed by the pinned SHA-256.
     /// A new payload without a matching manifest entry deliberately has unknown size.
     var knownByteCount: Int64? {
+        let zipSizes: [String: Int64] = [Self.zipEncoder.sha256: 181_895_032, Self.zipDecoder.sha256: 13_876_452,
+            Self.zipJoiner.sha256: 3_228_404, Self.zipTokens.sha256: 56_317, Self.zipBPE.sha256: 12_564]
+        if let size = zipSizes[sha256] { return size }
         switch sha256 {
         case "81a70226a8934e6ed92aa1d4fc486b428b5398e2f2619ed4897b7294cab90e9a": return 165_462_184
         case "f3cca9f77bb9d93c8fcbfb63ae617b6b1ee96818df3aa3b151c40658fe38594f": return 71_664_561
@@ -169,28 +196,5 @@ enum ModelDistribution {
     private struct Configuration: Decodable {
         let modelScopeBaseURL: String?
         let ossBaseURL: String?
-    }
-}
-
-/// Heuristic completion gate for stable local ASR segments. No network or model calls.
-/// It deliberately misses ambiguous/rhetorical questions rather than firing on every VAD pause.
-enum LocalQuestionDetector {
-    static func isQuestion(_ text: String) -> Bool {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = text.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
-        guard lower.count >= 5 else { return false }
-        guard !["不用回答", "不需要回答", "忽略刚才", "never mind", "ignore that", "no need to answer"].contains(where: lower.contains) else { return false }
-        let incomplete = [" and", " or", " because", " if", " but", " the", " of", " with", " to", "以及", "因为", "如果", "但是", "然后", "比如", "关于", "对于"]
-        guard !incomplete.contains(where: lower.hasSuffix) else { return false }
-        let filler = ["thank you", "thanks", "okay", "ok", "right", "you know", "谢谢", "好的", "对吧", "是不是", "明白了"]
-        guard !filler.contains(lower) else { return false }
-        let reported = ["i don't know", "i do not know", "we don't know", "he asked", "she asked", "我不知道", "他问我", "她问我", "我刚才问"]
-        guard !reported.contains(where: lower.hasPrefix) else { return false }
-        if QuestionCompleteness.explicitDirectQuestion(text) { return true }
-        let english = #"(^|[.!?]\s+)(why|what|how|when|where|which|who|whose|can you|could you|would you|will you|do you|did you|have you|are you|is there|are there|what about|how about|please explain|please describe|tell us|tell me|walk us through|walk me through)\b"#
-        if lower.range(of: english, options: .regularExpression) != nil { return true }
-        let chinese = ["为什么", "为何", "怎么", "怎样", "如何", "什么", "多少", "哪个", "哪些", "哪里", "是否", "能否", "可否", "能不能", "有没有", "你认为", "你觉得", "您认为", "请介绍", "请解释", "请说明", "请问", "说说", "谈谈"]
-        if chinese.contains(where: lower.contains) { return true }
-        return (lower.hasSuffix("吗") || lower.hasSuffix("呢")) && lower.count >= 8
     }
 }
