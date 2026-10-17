@@ -16,6 +16,9 @@ final class LocalInferenceWorker: @unchecked Sendable {
     private var cancelled = Set<UUID>()
     private var timedOut = Set<UUID>()
     private var closed = false
+    private var diagnosticCode = "unknown"
+    var failureCode: String { lock.lock(); defer { lock.unlock() }; return diagnosticCode }
+    private func recordFailure(_ code: String) { lock.lock(); diagnosticCode = code; lock.unlock() }
 
     init(mode: String, modelDirectory: URL, executable: URL? = nil) {
         self.executable = executable ?? Bundle.main.resourceURL!.appendingPathComponent("LocalRuntime/livecopilot-inference")
@@ -48,7 +51,11 @@ final class LocalInferenceWorker: @unchecked Sendable {
                         bytes.append(10); try input!.write(contentsOf: bytes)
                         let response = try readMessage()
                         guard response["id"] as? String == id.uuidString else { throw CopilotError.message("Local model returned an invalid response.") }
-                        if response["error"] != nil { throw CopilotError.message("Local model could not process this input. Check model files and input length.") }
+                        if response["error"] as? String == "embedding_context" {
+                            recordFailure("embedding_context")
+                            throw CopilotError.message("Local model could not allocate inference memory, including on CPU. Close other apps and retry.")
+                        }
+                        if response["error"] != nil { recordFailure("inference_failed"); throw CopilotError.message("Local model could not process this input. Check model files and input length.") }
                         lock.lock(); let wasCancelled = cancelled.contains(id); lock.unlock()
                         if wasCancelled { throw CancellationError() }
                         continuation.resume(returning: response)
@@ -63,7 +70,7 @@ final class LocalInferenceWorker: @unchecked Sendable {
     }
     private func interrupt(_ id: UUID, timeout: Bool = false) {
         lock.lock(); defer { lock.unlock() }
-        if timeout { guard activeID == id else { return }; timedOut.insert(id) }
+        if timeout { guard activeID == id else { return }; timedOut.insert(id); diagnosticCode = "timeout" }
         else { cancelled.insert(id) }
         if activeID == id, let process, process.isRunning { process.terminate() }
     }
@@ -75,6 +82,7 @@ final class LocalInferenceWorker: @unchecked Sendable {
     private func ensureStarted() throws {
         if let process, process.isRunning { return }
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            recordFailure("runtime_missing")
             throw CopilotError.message("Local runtime is missing. Reinstall the complete LiveCopilot app.")
         }
         let child = Process(), stdin = Pipe(), stdout = Pipe()
@@ -84,11 +92,18 @@ final class LocalInferenceWorker: @unchecked Sendable {
         lock.lock()
         guard !closed, activeID.map({ !cancelled.contains($0) }) ?? false else { lock.unlock(); throw CancellationError() }
         process = child
-        do { try child.run() } catch { process = nil; lock.unlock(); throw CopilotError.message("Local runtime could not start. Reinstall the complete LiveCopilot app.") }
+        do { try child.run() } catch { process = nil; diagnosticCode = "runtime_start"; lock.unlock(); throw CopilotError.message("Local runtime could not start. Reinstall the complete LiveCopilot app.") }
         lock.unlock()
         input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading; buffer.removeAll(keepingCapacity: true)
         let response = try readMessage()
-        guard response["ready"] as? Bool == true else { throw CopilotError.message("Local model could not load. Download the model again in Services.") }
+        guard response["ready"] as? Bool == true else {
+            let code = response["error"] as? String ?? "model_load_failed"
+            recordFailure(["embedding_context", "embedding_load"].contains(code) ? code : "model_load_failed")
+            if response["error"] as? String == "embedding_context" {
+                throw CopilotError.message("Local model could not allocate inference memory, including on CPU. Close other apps and retry.")
+            }
+            throw CopilotError.message("Local model could not load. Model files, available memory or runtime compatibility may be responsible. Restart the app and retry; if it persists, contact support.")
+        }
     }
     private func readMessage() throws -> [String: Any] {
         while true {
@@ -102,6 +117,7 @@ final class LocalInferenceWorker: @unchecked Sendable {
             let count = Darwin.read(output.fileDescriptor, &bytes, bytes.count)
             if count < 0 && errno == EINTR { continue }
             guard count > 0 else {
+                lock.lock(); if diagnosticCode != "timeout" { diagnosticCode = "process_ended" }; lock.unlock()
                 throw CopilotError.message("Local model stopped unexpectedly or timed out. Retry after checking model files.")
             }
             buffer.append(contentsOf: bytes.prefix(count))

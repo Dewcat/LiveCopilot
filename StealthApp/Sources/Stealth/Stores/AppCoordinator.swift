@@ -9,6 +9,7 @@ final class AppCoordinator: ObservableObject {
         let id: UUID
         let questionID: UUID
         let automatic: Bool
+        var sourceFragmentID: String? = nil
         let createdAt: Date
         let store: SuggestionStore
         var viewed: Bool
@@ -40,6 +41,13 @@ final class AppCoordinator: ObservableObject {
     }
     private func publishAnswer(_ id: UUID, store: SuggestionStore) {
         if selectedAnswerID == id { suggestion.copy(from: store) }
+        if !store.isLoading, let sessionID = archivedAnswerSessions[id], let record = answers.first(where: { $0.id == id }) {
+            let snapshot = archiveAnswer(record)
+            sessions.update(sessionID) { session in
+                guard let index = session.answers?.firstIndex(where: { $0.id == id }) else { return }
+                session.answers?[index] = snapshot
+            }
+        }
         answerRevision &+= 1
     }
     private func syncQueuedAnswers() {
@@ -52,7 +60,8 @@ final class AppCoordinator: ObservableObject {
                 existing.store.prepare(question: item.query)
             } else {
                 let store = SuggestionStore(); store.prepare(question: item.query)
-                answers.append(AnswerRecord(id: item.answerID, questionID: item.id, automatic: true,
+                sessionAnswerIDs.insert(item.answerID)
+                answers.append(AnswerRecord(id: item.answerID, questionID: item.id, automatic: true, sourceFragmentID: item.sourceID,
                                             createdAt: item.receivedAt, store: store, viewed: false))
             }
         }
@@ -140,6 +149,10 @@ final class AppCoordinator: ObservableObject {
     private var startupCheckStarted = false
     private var startupCheckTask: Task<Void, Never>?
     private var sessionStartedAt: Date?
+    private var sessionWasVoice = false
+    private var sessionAnswerIDs = Set<UUID>()
+    private var archivedAnswerSessions: [UUID: UUID] = [:]
+    private var namingTasks: [UUID: Task<Void, Never>] = [:]
     private var liveEpoch = UUID()
     private var activeDelegations = Set<String>()
     private var speakingSources = Set<Speaker>()
@@ -676,8 +689,10 @@ final class AppCoordinator: ObservableObject {
         prepareLocalRetrieval()
         invalidateAutomaticTrigger(releaseRuntime: false)
         let epoch = UUID(); liveEpoch = epoch
+        saveSession()
+        guard sessionStartedAt == nil else { statusMessage = sessions.lastError ?? "Session history could not be saved."; return }
         conversation.reset(); transcript.clear(); activeDelegations = []; speakingSources = []
-        sessionStartedAt = Date()
+        sessionStartedAt = Date(); sessionWasVoice = true; sessionAnswerIDs = []
         if isMock {
             isRunning = true; statusMessage = "MOCK listening — sample conversation"
             configureAutomaticTrigger()
@@ -847,7 +862,7 @@ final class AppCoordinator: ObservableObject {
         let resume = isRunning
         // Finish and archive stable/final ASR before clearing the visible conversation.
         if resume { await stop() } else { saveSession() }
-        guard sessionStartedAt == nil || transcript.lines.isEmpty else {
+        guard sessionStartedAt == nil else {
             statusMessage = sessions.lastError ?? "Session history could not be saved. Check available disk space and permissions."
             return
         }
@@ -873,11 +888,45 @@ final class AppCoordinator: ObservableObject {
         isTransitioning = false
         if resume && !isShuttingDown { await start() }
     }
+    private func archiveAnswer(_ record: AnswerRecord) -> SessionAnswer {
+        let store = record.store
+        return SessionAnswer(id: record.id, questionID: record.questionID, automatic: record.automatic,
+                             createdAt: record.createdAt, answeredAt: store.answeredAt, completedAt: store.completedAt,
+                             question: store.question, text: store.text, state: store.state.rawValue,
+                             warning: store.warning, error: store.error, sources: store.citedSources.map { citation in
+            let chunk = citation.source.chunk
+            return SessionCitation(index: citation.index, documentID: chunk.documentID, documentName: chunk.documentName,
+                                   page: chunk.page, ordinal: chunk.ordinal, excerpt: chunk.text)
+        }, sourceFragmentID: record.sourceFragmentID)
+    }
     func saveSession() {
-        if let started = sessionStartedAt {
-            if !transcript.lines.isEmpty && sessions.save(lines: transcript.lines, startedAt: started, fragments: conversation.fragments) == nil { return }
+        guard let started = sessionStartedAt else { return }
+        let savedAnswers = answers.filter { sessionAnswerIDs.contains($0.id) }.map(archiveAnswer)
+        let lines = transcript.archiveSnapshot(since: started)
+        if !lines.isEmpty || !savedAnswers.isEmpty {
+            guard let record = sessions.saveSnapshot(lines: lines, startedAt: started,
+                fragments: transcript.fragmentRevisions.filter { $0.receivedAt >= started }, answers: savedAnswers) else { return }
+            for answer in savedAnswers { archivedAnswerSessions[answer.id] = record.id }
+            if sessionWasVoice && !isMock && !record.namingInput.isEmpty { nameSession(record) }
         }
-        sessionStartedAt = nil
+        sessionStartedAt = nil; sessionWasVoice = false; sessionAnswerIDs = []
+    }
+    private func nameSession(_ record: SessionRecord) {
+        guard namingTasks[record.id] == nil else { return }
+        sessions.update(record.id) { $0.namingState = "pending" }
+        let settings = settings, liveKey = cachedKey, analysisKey = cachedAnalysisKey
+        namingTasks[record.id] = Task { [weak self] in
+            guard let self else { return }
+            defer { self.namingTasks[record.id] = nil }
+            do {
+                let provider = try ReasoningProviderFactory.make(settings: settings, liveKey: liveKey, analysisKey: analysisKey)
+                let title = try await SessionNaming.generate(for: record, provider: provider)
+                try Task.checkCancellation()
+                self.sessions.update(record.id) { $0.generatedTitle = title; $0.namingState = "named" }
+            } catch {
+                self.sessions.update(record.id) { $0.namingState = "failed" }
+            }
+        }
     }
     func toggle() async { if isRunning { await stop() } else { await start() } }
     func toggleMic() {
@@ -944,14 +993,16 @@ final class AppCoordinator: ObservableObject {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, !isTransitioning, !isShuttingDown else { return }
         guard query.count <= 8000 else { suggestion.fail("Keep a manual question under 8,000 characters."); return }
+        if sessionStartedAt == nil { sessionStartedAt = Date(); sessionWasVoice = false; sessionAnswerIDs = [] }
         let settings = settings, liveKey = cachedKey, analysisKey = cachedAnalysisKey
         let embedding = try? embeddingProvider()
         let id = scheduled?.answerID ?? UUID(); requestID = id
+        sessionAnswerIDs.insert(id)
         let output = answers.first(where: { $0.id == id })?.store ?? SuggestionStore()
         activeStore = output; answerIsRunning = true
         let show = !automatic || selectedAnswerID == nil
         if !answers.contains(where: { $0.id == id }) {
-            answers.append(AnswerRecord(id: id, questionID: scheduled?.id ?? UUID(), automatic: automatic,
+            answers.append(AnswerRecord(id: id, questionID: scheduled?.id ?? UUID(), automatic: automatic, sourceFragmentID: scheduled?.sourceID,
                                         createdAt: Date(), store: output, viewed: show))
         }
         if show {

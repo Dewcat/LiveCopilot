@@ -14,7 +14,7 @@ struct ChatCompletionsProvider: ReasoningProvider {
     func httpRequest(_ answer: AnswerRequest) throws -> URLRequest {
         guard !key.isEmpty else { throw CopilotError.message("Configure the analysis service API key in Services.") }
         guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CopilotError.message("Enter an analysis model name in Services.") }
-        var body: [String: Any] = ["model": model, "stream": true, "max_tokens": 4096,
+        var body: [String: Any] = ["model": model, "stream": true, "max_tokens": answer.sessionTitleInput == nil ? 4096 : 512,
             "messages": [["role": "system", "content": answer.instructions], ["role": "user", "content": answer.input]]]
         if let requested = deepSeekEffort {
             let mode = AnalysisModelCatalog.normalized(requested, model: model, service: .deepSeek)

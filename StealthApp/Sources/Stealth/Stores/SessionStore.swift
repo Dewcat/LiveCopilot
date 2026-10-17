@@ -46,16 +46,25 @@ final class SessionStore: ObservableObject {
     /// No-op when there are no lines (an empty session isn't worth saving).
     @discardableResult
     func save(lines: [TranscriptLine], startedAt: Date, endedAt: Date = Date(), fragments: [TranscriptFragment] = []) -> SessionRecord? {
-        guard !lines.isEmpty else { return nil }
-        var record = SessionRecord(
-            startedAt: startedAt,
-            endedAt: endedAt,
-            lines: lines.map(SessionLine.init(from:))
-        )
-        record.fragments = fragments
+        saveSnapshot(lines: lines.map { SessionLine(from: $0) }, startedAt: startedAt, endedAt: endedAt, fragments: fragments, answers: [])
+    }
+    @discardableResult
+    func saveSnapshot(lines: [SessionLine], startedAt: Date, endedAt: Date = Date(), fragments: [TranscriptFragment] = [], answers: [SessionAnswer]) -> SessionRecord? {
+        guard !lines.isEmpty || !answers.isEmpty else { return nil }
+        var record = SessionRecord(startedAt: startedAt, endedAt: endedAt, lines: lines)
+        record.fragments = fragments; record.answers = answers; record.schemaVersion = 2
         guard persist(record) else { return nil }
         sessions = ([record] + sessions).sorted { $0.startedAt > $1.startedAt }
         return record
+    }
+    @discardableResult
+    func update(_ id: UUID, change: (inout SessionRecord) -> Void) -> Bool {
+        // A late API response or answer must never resurrect a deleted session.
+        guard let index = sessions.firstIndex(where: { $0.id == id }) else { return false }
+        var record = sessions[index]; change(&record)
+        guard persist(record) else { return false }
+        sessions[index] = record
+        return true
     }
 
     func delete(_ record: SessionRecord) {
@@ -70,7 +79,7 @@ final class SessionStore: ObservableObject {
     }
 
     func export(_ record: SessionRecord, to url: URL) throws {
-        try Data(record.transcriptDocument.utf8).write(to: url, options: .atomic)
+        try Data(record.export(markdown: url.pathExtension.lowercased() == "md").utf8).write(to: url, options: .atomic)
         try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
@@ -104,7 +113,9 @@ final class SessionStore: ObservableObject {
             .filter { $0.pathExtension == "json" }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                return try? decoder.decode(SessionRecord.self, from: data)
+                guard var record = try? decoder.decode(SessionRecord.self, from: data) else { return nil }
+                if record.namingState == "pending" { record.namingState = "failed" }
+                return record
             }
         sessions = loaded.sorted { $0.startedAt > $1.startedAt }
     }

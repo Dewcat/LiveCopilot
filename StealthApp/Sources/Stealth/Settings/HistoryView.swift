@@ -2,136 +2,238 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Browse past sessions saved when you stop listening: a master list of sessions
-/// on the left, the full speaker-labelled transcript on the right.
 struct HistoryView: View {
     @ObservedObject var coordinator: AppCoordinator
+    var body: some View {
+        HistoryBrowser(sessions: coordinator.sessions, english: coordinator.settings.language == .english)
+            .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
+            .environment(\.locale, coordinator.settings.language.locale)
+    }
+}
+
+/// Also hosts isolated acceptance fixtures without opening the user's history store.
+struct HistoryBrowser: View {
     @ObservedObject var sessions: SessionStore
+    var english = false
+    @State private var query = ""
+    @State private var selectedID: UUID?
+    @State private var pendingDelete: SessionRecord?
     @State private var exportError: String?
-    @State private var selectedID: SessionRecord.ID?
-
-    init(coordinator: AppCoordinator) {
-        self.coordinator = coordinator
-        self.sessions = coordinator.sessions
+    @State private var copied = false
+    @State private var bookmarks: [UUID: String] = [:]
+    private func b(_ en: String, _ zh: String) -> String { english ? en : zh }
+    private var filtered: [SessionRecord] { sessions.sessions.filter { $0.matches(query) } }
+    private var selected: SessionRecord? { filtered.first { $0.id == selectedID } }
+    private func group(_ session: SessionRecord) -> Int {
+        Calendar.current.isDateInToday(session.startedAt) ? 0 : Calendar.current.isDateInYesterday(session.startedAt) ? 1 : 2
     }
-    private func t(_ text: String) -> String { L10n.text(text, language: coordinator.settings.language) }
-
-    private var selected: SessionRecord? {
-        sessions.sessions.first { $0.id == selectedID }
-    }
-
     var body: some View {
         HStack(spacing: 0) {
             sessionList
             Divider()
-            detail
-        }
-        .background { WindowBackgroundView(style: coordinator.settings.background) }
-        .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
-        .environment(\.locale, coordinator.settings.language.locale)
-        .frame(minWidth: 540, minHeight: 360)
-        .onChange(of: sessions.sessions) { _, _ in
-            if selectedID == nil { selectedID = sessions.sessions.first?.id }
-        }
-        .onAppear {
-            if selectedID == nil { selectedID = sessions.sessions.first?.id }
-        }
-    }
-
-    private var sessionList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(t("Sessions"))
-                .font(.headline)
-                .padding(12)
-            if sessions.sessions.isEmpty {
-                Text(t("No saved sessions yet.\nStop a listening session to save it here."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(12)
-                Spacer()
+            if let session = selected {
+                detail(session).id(session.id)
             } else {
-                List(selection: $selectedID) {
-                    ForEach(sessions.sessions) { session in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(session.title)
-                                .font(.system(size: 13, weight: .medium))
-                            Text("\(session.lineCount) \(t("lines")) · \(session.durationLabel)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .tag(session.id)
-                    }
-                }
-                .listStyle(.sidebar)
+                empty(icon: query.isEmpty ? "clock" : "magnifyingglass",
+                      title: query.isEmpty ? b("Your conversations, together", "完整会话，随时回看") : b("No matching sessions", "没有找到相关会话"),
+                      text: query.isEmpty ? b("Finish a voice session to save its transcript and answers here.", "结束语音会话后，转写与 AI 回答会保存在这里。") : b("Try another word from a question, answer or source.", "试试问题、回答或引用来源中的其他关键词。"))
             }
         }
-        .frame(width: 170)
+        .frame(minWidth: 540, minHeight: 360)
+        .background(Color(nsColor: .textBackgroundColor))
+        .onAppear { reconcileSelection() }
+        .onChange(of: query) { _, _ in reconcileSelection() }
+        .onChange(of: filtered.map(\.id)) { _, _ in reconcileSelection() }
+        .confirmationDialog(b("Delete this session?", "删除这条会话？"), isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
+            Button(b("Delete session", "删除会话"), role: .destructive) {
+                if let record = pendingDelete { sessions.delete(record); bookmarks[record.id] = nil }
+                pendingDelete = nil; reconcileSelection()
+            }
+            Button(b("Cancel", "取消"), role: .cancel) { pendingDelete = nil }
+        } message: { Text(b("The transcript, questions and answers will be removed from local history. This cannot be undone.", "将从本地历史中删除这次会话的转写、问题与回答，删除后无法恢复。")) }
     }
-
-    @ViewBuilder
-    private var detail: some View {
-        if let session = selected {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.title).font(.headline)
-                        Text("\(session.lineCount) \(t("lines")) · \(session.durationLabel)")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(session.plainText, forType: .string)
-                    } label: { Label(t("Copy"), systemImage: "doc.on.doc") }
-                    Button {
-                        let panel = NSSavePanel(); panel.allowedContentTypes = [.plainText]
-                        panel.nameFieldStringValue = session.exportFilename
-                        panel.begin { response in
-                            guard response == .OK, let url = panel.url else { return }
-                            do { try sessions.export(session, to: url); exportError = nil }
-                            catch { exportError = error.localizedDescription }
-                        }
-                    } label: { Label(t("Export"), systemImage: "square.and.arrow.up") }
-                        .accessibilityIdentifier("export-transcript")
-                    Button(role: .destructive) {
-                        let toDelete = session
-                        selectedID = nil
-                        sessions.delete(toDelete)
-                        selectedID = sessions.sessions.first?.id
-                    } label: { Label(t("Delete"), systemImage: "trash") }
-                }
-                .padding(12)
-                if let error = exportError ?? sessions.lastError { Text(t(error)).font(.caption).foregroundStyle(.red).padding(.horizontal, 12) }
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(session.lines) { line in
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(spacing: 6) {
-                                    Text(t(line.speaker.rawValue))
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(line.speaker == .you ? .blue : .green)
-                                    Text(line.clock)
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                Text(line.content)
-                                    .font(.system(size: 13))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+    private func reconcileSelection() {
+        if !filtered.contains(where: { $0.id == selectedID }) { selectedID = filtered.first?.id }
+    }
+    private var sessionList: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(b("Search conversations", "搜索会话内容"), text: $query)
+                    .textFieldStyle(.plain).accessibilityIdentifier("history-search")
+                if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary).help(b("Clear search", "清除搜索")) }
+            }.padding(8).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7)).padding(10)
+            Divider()
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(0..<3) { index in
+                        let records = filtered.filter { group($0) == index }
+                        if !records.isEmpty {
+                            Text([b("Today", "今天"), b("Yesterday", "昨天"), b("Earlier", "更早")][index])
+                                .font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 9).padding(.top, 12).padding(.bottom, 3)
+                            ForEach(records) { session in
+                                Button { selectedID = session.id; copied = false } label: {
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        Text(HistoryFormat.date(session.startedAt, english: english, style: index == 2 ? .abbreviated : .omitted, time: .shortened))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        Text(session.title).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.leading)
+                                        Text("\(session.durationLabel) · \(session.messageCount) " + b("messages", "条消息"))
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }.frame(maxWidth: .infinity, alignment: .leading).padding(9)
+                                        .background(selectedID == session.id ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityIdentifier("history-session-" + session.id.uuidString)
+                                    .contextMenu {
+                                        Button(b("Copy session", "复制完整会话")) { copy(session.export(markdown: false)) }
+                                        Menu(b("Export", "导出")) { exportButtons(session) }
+                                        Divider()
+                                        Button(b("Delete…", "删除…"), role: .destructive) { pendingDelete = session }
+                                    }
                             }
                         }
                     }
-                    .padding(12)
+                }.padding(.horizontal, 7).padding(.bottom, 12)
+            }
+            Text("\(filtered.count) " + b("sessions", "条会话")).font(.caption2).foregroundStyle(.secondary).padding(8)
+        }.frame(width: 172).background(Color(nsColor: .controlBackgroundColor))
+    }
+    private func detail(_ session: SessionRecord) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(session.title).font(.title3.weight(.semibold)).lineLimit(2).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 12) {
+                        Button { copy(session.export(markdown: false)); copied = true } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc") }
+                            .help(b("Copy session", "复制完整会话")).accessibilityLabel(b("Copy session", "复制完整会话"))
+                        Menu { exportButtons(session) } label: { Image(systemName: "square.and.arrow.up") }
+                            .menuStyle(.borderlessButton).fixedSize().help(b("Export", "导出")).accessibilityIdentifier("export-transcript")
+                        Button { pendingDelete = session } label: { Image(systemName: "trash") }
+                            .help(b("Delete session", "删除会话")).accessibilityLabel(b("Delete session", "删除会话"))
+                    }.buttonStyle(.borderless).foregroundStyle(.secondary).padding(.top, 3)
                 }
-            }
-        } else {
-            VStack {
-                Spacer()
-                Text(t("Select a session")).foregroundStyle(.secondary)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
+                Text(HistoryFormat.date(session.startedAt, english: english, style: .complete, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                Text(HistoryFormat.date(session.startedAt, english: english) + " – " + HistoryFormat.date(session.endedAt, english: english) + " · \(session.durationLabel) · \(session.messageCount) " + b("messages", "条消息"))
+                    .font(.caption).foregroundStyle(.secondary)
+                if session.namingState == "pending" { Text(b("Naming this session…", "正在生成会话名称…")).font(.caption2).foregroundStyle(.secondary) }
+                if let error = exportError ?? sessions.lastError { Text(error).font(.caption).foregroundStyle(.red) }
+            }.padding(18)
+            Divider()
+            HistoryTimeline(session: session, english: english,
+                            position: Binding(get: { bookmarks[session.id] }, set: { bookmarks[session.id] = $0 }))
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    @ViewBuilder private func exportButtons(_ session: SessionRecord) -> some View {
+        Button("Markdown (.md)") { export(session, markdown: true) }
+        Button("TXT (.txt)") { export(session, markdown: false) }
+    }
+    private func export(_ session: SessionRecord, markdown: Bool) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = markdown ? [UTType(filenameExtension: "md") ?? .plainText] : [.plainText]
+        panel.nameFieldStringValue = markdown ? String(session.exportFilename.dropLast(4)) + ".md" : session.exportFilename
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try sessions.export(session, to: url); exportError = nil } catch { exportError = error.localizedDescription }
         }
+    }
+    private func copy(_ text: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
+    private func empty(icon: String, title: String, text: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 30, weight: .light)).foregroundStyle(.tertiary)
+            Text(title).font(.headline)
+            Text(text).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 290)
+        }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct HistoryTimeline: View {
+    let session: SessionRecord
+    let english: Bool
+    @Binding var position: String?
+    @State private var visibleID: String?
+    init(session: SessionRecord, english: Bool, position: Binding<String?>) {
+        self.session = session; self.english = english; _position = position
+        _visibleID = State(initialValue: position.wrappedValue)
+    }
+    var body: some View {
+        let events = session.timeline
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                if (session.answers ?? []).isEmpty {
+                    Label(english ? (session.isLegacy ? "This older record contains transcripts only." : "No AI answers in this session.") : (session.isLegacy ? "这条旧记录仅保存了语音转写，没有 AI 回答。" : "本次会话没有生成 AI 回答。"), systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 4).id("notice")
+                }
+                ForEach(events) { event in
+                    HistoryMessage(event: event, english: english).id(event.id)
+                }
+            }.scrollTargetLayout().padding(18)
+        }.scrollPosition(id: $visibleID, anchor: .top).onDisappear { position = visibleID }.accessibilityIdentifier("history-timeline")
+    }
+}
+
+private struct HistoryMessage: View {
+    let event: SessionEvent
+    let english: Bool
+    private var color: Color { event.kind == .room ? .green : event.kind == .nearby ? .blue : .secondary }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle().fill(color).frame(width: 5, height: 5)
+                Text(event.role(english: english)).fontWeight(.medium)
+                Text(HistoryFormat.date(event.at, english: english, time: .standard)).foregroundStyle(Color.secondary)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(event.exported(markdown: false, english: english), forType: .string)
+                } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).foregroundStyle(Color.secondary).help(english ? "Copy message" : "复制这条消息").accessibilityLabel(english ? "Copy message" : "复制这条消息")
+            }.font(.caption).foregroundStyle(color)
+            if event.kind == .answer {
+                ForEach(Array(SuggestionParser.sections(event.content).enumerated()), id: \.offset) { _, section in
+                    if AnswerMessageView.isEvidence(section.title) {
+                        DisclosureGroup(english ? "Evidence & notes" : "依据与补充") { markdown(section.content).padding(.top, 6) }.font(.caption)
+                    } else {
+                        if !section.title.isEmpty { Text(section.title).font(.subheadline.weight(.semibold)) }
+                        markdown(section.content)
+                    }
+                }
+                if let answer = event.answer {
+                    if event.content.isEmpty || answer.state != "completed" {
+                        Text(status(answer.state)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let warning = answer.warning { Text(warning).font(.caption).foregroundStyle(.orange) }
+                    if let error = answer.error { Text(error).font(.caption).foregroundStyle(.red) }
+                    if !answer.sources.isEmpty {
+                        DisclosureGroup(english ? "Knowledge sources & citations (\(answer.sources.count))" : "知识库来源与引用（\(answer.sources.count)）") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(answer.sources) { source in
+                                    Text(source.label).font(.caption.weight(.semibold))
+                                    Text(source.excerpt).font(.callout).foregroundStyle(.secondary)
+                                }
+                            }.textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                        }.font(.caption)
+                    }
+                }
+            } else {
+                Text(event.content).font(.system(size: 13, weight: event.kind == .question ? .medium : .regular))
+                    .textSelection(.enabled).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }.padding(event.kind == .answer || event.kind == .question ? 12 : 0)
+            .background(event.kind == .answer ? Color.primary.opacity(0.025) : event.kind == .question ? Color.accentColor.opacity(0.045) : .clear, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(event.kind == .answer ? Color.primary.opacity(0.07) : .clear))
+            .contextMenu { Button(english ? "Copy message" : "复制这条消息") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(event.exported(markdown: false, english: english), forType: .string) } }
+    }
+    private func markdown(_ value: String) -> some View { Text(.init(value)).font(.system(size: 13)).lineSpacing(4).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+    private func status(_ value: String) -> String {
+        switch value {
+        case "completed": return english ? "Completed without text" : "已结束，未返回正文"
+        case "failed": return english ? "Answer failed" : "回答生成失败"
+        case "interrupted": return english ? "Answer interrupted" : "回答已中断"
+        default: return english ? "Answer was not completed when saved" : "保存时回答尚未完成"
+        }
+    }
+}
+
+private enum HistoryFormat {
+    static func date(_ date: Date, english: Bool, style: Date.FormatStyle.DateStyle = .omitted, time: Date.FormatStyle.TimeStyle = .shortened) -> String {
+        date.formatted(Date.FormatStyle(date: style, time: time, locale: Locale(identifier: english ? "en_US" : "zh_CN")))
     }
 }

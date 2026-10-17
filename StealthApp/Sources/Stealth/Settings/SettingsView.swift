@@ -60,7 +60,7 @@ struct SettingsView: View {
                 case .shortcuts: shortcuts
                 case .about: ScrollView { about }
                 }
-            }.padding(26).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }.padding(page == .history ? 16 : 26).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 820, idealWidth: 860, minHeight: 610, idealHeight: 680)
         .background { WindowBackgroundView(style: coordinator.settings.background).ignoresSafeArea() }
@@ -152,10 +152,10 @@ struct SettingsView: View {
                     Toggle(b("Automatically fit answer height", "回答区自动伸缩"), isOn: $coordinator.settings.overlayAutoHeight)
                         .accessibilityIdentifier("overlay-auto-height")
                     Text(b("Fit the window to answer content; longer conversations scroll. The voice and input areas stay fixed. Drag vertically to use a manual height.", "窗口随回答内容伸缩，长会话独立滚动；语音区和输入区保持固定。手动拖动高度后改为手动尺寸。")).font(.caption).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 7) {
-                Toggle(isOn: $coordinator.settings.excludeOverlayFromCapture) {
-                    Label(t("Hide the floating window from meeting screen sharing and recording"), systemImage: "eye.slash").font(.headline)
-                }.accessibilityIdentifier("exclude-overlay-capture")
+                    Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(t("Hide the floating window from meeting screen sharing and recording"), isOn: $coordinator.settings.excludeOverlayFromCapture)
+                    .accessibilityIdentifier("exclude-overlay-capture")
                 Text(t("Keep suggestions visible on your screen while excluding the floating window from capture. Settings and setup remain visible in shared content. Verify the result from another participant before use."))
                     .font(.caption).foregroundStyle(.secondary)
                 if coordinator.settings.excludeOverlayFromCapture {
@@ -584,6 +584,10 @@ struct SettingsView: View {
                     .foregroundStyle(.green).accessibilityIdentifier("knowledge-index-complete")
             }
             if !coordinator.knowledgeMessage.isEmpty { Text(t(coordinator.knowledgeMessage)).font(.caption).textSelection(.enabled) }
+            if coordinator.settings.embeddingService == .local {
+                Button(b("Check local model / copy diagnostics", "检查本地模型 / 复制诊断信息")) { page = .services; serviceRole = 1 }
+                    .accessibilityIdentifier("knowledge-model-diagnostics")
+            }
             List {
                 ForEach(coordinator.knowledgeDocuments) { document in
                     VStack(alignment: .leading, spacing: 5) {
@@ -680,6 +684,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 private struct LocalModelCard: View {
     var compact = false
     @State private var confirmRemoval = false
+    @State private var copiedDiagnostics = false
     @ObservedObject var manager: LocalModelManager
     let kind: LocalModelKind
     let language: AppLanguage
@@ -690,18 +695,16 @@ private struct LocalModelCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(kind == .embedding ? (language == .english ? "Local knowledge index model" : "知识库本地索引模型") : kind != .embedding ? (language == .english ? "Real-time Chinese & English recognition" : "中英双语实时识别") : kind.title).font(.headline)
-                    Text(kind == .embedding ? "BGE-M3 Q8・" + kind.downloadSize : (kind == .streamingSpeech ? "Paraformer" : "Zipformer") + " · " + kind.downloadSize).font(.caption).foregroundStyle(.secondary)
+                    Text(kind == .embedding ? (language == .english ? "Local knowledge index model" : "知识库本地索引模型") : kind.title).font(.headline)
+                    Text(t("Download size") + " · " + kind.downloadSize).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label(statusTitle, systemImage: (kind == .embedding ? manager.embeddingVerification.isReady : manager.installed.contains(kind)) ? "checkmark.circle.fill"
+                Label(statusTitle, systemImage: manager.health[kind]?.ready == true ? "checkmark.circle.fill"
                       : manager.queued.contains(kind) ? "clock" : "arrow.down.circle")
-                    .font(.caption).foregroundStyle((kind == .embedding ? manager.embeddingVerification.isReady : manager.installed.contains(kind)) ? .green : .secondary)
+                    .font(.caption).foregroundStyle(manager.health[kind]?.ready == true ? .green : .secondary)
             }
-            if kind == .streamingSpeech && !compact {
-                Text(language == .english ? "Transcribe mixed Chinese and English locally, offline, with no API fees." : "支持中英文混合语音转写，本地离线运行，无需 API 费用。")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
+            Text(language == .english ? "Automatically tries available download sources. Progress is for the current file." : "自动尝试可用下载线路；进度显示当前文件的下载比例。")
+                .font(.caption).foregroundStyle(.secondary)
             if manager.downloading == kind {
                 if let value = manager.downloadProgress {
                     ProgressView(value: value)
@@ -711,34 +714,42 @@ private struct LocalModelCard: View {
             } else if manager.queued.contains(kind) {
                 Text(language == .english ? "Download is queued and will start automatically after the current model." : "已加入下载队列，当前模型完成后会自动开始。")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            HStack(spacing: 12) {
-                Button(kind == .embedding && manager.installed.contains(kind) ? t("Verify / Retry") : (language == .english ? "Download / Retry" : "下载/重试")) {
-                    if kind == .embedding && manager.installed.contains(kind) { Task { await manager.verifyEmbedding() } }
-                    else { manager.install(kind) }
+            } else {
+                Button(t(manager.installed.contains(kind) ? "Download again" : "Download model")) { copiedDiagnostics = false; manager.install(kind) }
+                    .disabled(locked || manager.downloading != nil).accessibilityIdentifier("download-" + kind.rawValue)
+                if manager.installed.contains(kind) {
+                    Button(language == .english ? "Run self-check" : "运行自检") { copiedDiagnostics = false; manager.runSelfCheck(kind) }
+                        .disabled(locked || manager.downloading != nil).accessibilityIdentifier("selfcheck-" + kind.rawValue)
+                    Button(language == .english ? "Delete local model…" : "删除本地模型…", role: .destructive) { confirmRemoval = true }
+                        .disabled(locked || manager.downloading != nil)
+                        .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
+                            Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
+                        } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
                 }
-                    .disabled(locked || manager.downloading != nil || manager.queued.contains(kind) || (kind == .embedding ? manager.embeddingVerification.isChecking || manager.embeddingVerification.isReady : manager.installed.contains(kind)))
-                    .accessibilityIdentifier("download-" + kind.rawValue)
-                Spacer()
-                Button(language == .english ? "Delete local files…" : "删除本地文件…", role: .destructive) { confirmRemoval = true }
-                    .foregroundStyle(.red)
-                    .disabled(locked || manager.downloading != nil || manager.queued.contains(kind) || !manager.installed.contains(kind) || manager.embeddingVerification.isChecking)
-                    .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
-                        Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
-                    } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
+                if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty { Text(t(manager.message)).font(.caption).foregroundStyle(.secondary) }
             }
-            if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty {
-                Text(t(manager.message)).font(.caption).foregroundStyle(.secondary)
+            if let report = manager.health[kind] {
+                Text(report.advice(english: language == .english))
+                    .font(.caption).foregroundStyle(report.ready ? Color.secondary : Color.orange)
+                    .accessibilityIdentifier("selfcheck-result-" + kind.rawValue)
+                Button(copiedDiagnostics ? (language == .english ? "Copied" : "已复制") : (language == .english ? "Copy diagnostics" : "复制诊断信息")) {
+                    NSPasteboard.general.clearContents()
+                    copiedDiagnostics = NSPasteboard.general.setString(report.diagnostic(kind: kind), forType: .string)
+                }.accessibilityIdentifier("copy-diagnostics-" + kind.rawValue)
+                Text(language == .english ? "Includes device, app version and self-check results. No documents or API keys." : "仅包含设备、应用版本和自检结果，不含文档内容或 API Key。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-        }.padding(compact ? 0 : 16).background(.quaternary.opacity(compact ? 0 : 0.45), in: RoundedRectangle(cornerRadius: 12))
+            Text(t("Downloaded once, stored on this Mac. No Python, Ollama or Docker installation is required.")).font(.caption).foregroundStyle(.secondary)
+        }.padding(16).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
             .onAppear { manager.refresh() }
     }
     private var statusTitle: String {
-        if kind == .embedding && manager.installed.contains(kind) {
-            return t(manager.embeddingVerification.message)
+        if manager.checking == kind { return language == .english ? "Checking…" : "正在自检…" }
+        if let report = manager.health[kind] {
+            return report.ready ? (language == .english ? "Self-check passed · offline ready" : "自检通过 · 可离线使用") : (language == .english ? "Self-check failed" : "自检未通过")
         }
-        if manager.installed.contains(kind) { return t("Installed · offline ready") }
         if manager.downloading == kind { return language == .english ? "Downloading…" : "正在下载…" }
+        if manager.installed.contains(kind) { return language == .english ? "Downloaded · not checked" : "已下载 · 尚未自检" }
         if manager.queued.contains(kind) { return language == .english ? "Queued for download" : "等待下载" }
         if manager.failures[kind] != nil { return language == .english ? "Download failed" : "下载失败" }
         return t("Not downloaded")

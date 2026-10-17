@@ -138,7 +138,7 @@ struct OpenAIReasoningProvider: ReasoningProvider {
     var transport: any HTTPTransport = URLSessionTransport()
     func httpRequest(_ request: AnswerRequest) throws -> URLRequest {
         var body: [String: Any] = ["model": model, "instructions": request.instructions,
-            "input": request.input, "stream": true, "store": false, "max_output_tokens": 2800]
+            "input": request.input, "stream": true, "store": false, "max_output_tokens": request.sessionTitleInput == nil ? 2800 : 512]
         let mode = AnalysisModelCatalog.normalized(effort, model: model, service: .separateOpenAI)
         if mode != .modelDefault { body["reasoning"] = ["effort": mode.referenceKey] }
         // Explicit Standard when unchecked; an account-level Fast default must

@@ -23,6 +23,12 @@ struct TranscriptLine: Identifiable, Equatable {
 final class TranscriptStore: ObservableObject {
     @Published private(set) var lines: [TranscriptLine] = []
 
+    private(set) var archivedLines: [TranscriptLine] = []
+    private(set) var fragmentRevisions: [TranscriptFragment] = []
+    func archiveSnapshot(since: Date) -> [SessionLine] {
+        archivedLines.filter { $0.at >= since }.map { SessionLine(from: $0, fragmentIDs: fragmentsByLine[$0.id, default: []].map(\.id)) }
+    }
+
     /// In-progress (not-yet-final) text per speaker, shown dimmer while streaming.
     @Published private(set) var partialThem: String = ""
     @Published private(set) var partialYou: String = ""
@@ -64,11 +70,8 @@ final class TranscriptStore: ObservableObject {
     func commit(_ line: String, speaker: Speaker, now: Date = Date()) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        var next = lines + [TranscriptLine(speaker: speaker, at: now, content: trimmed)]
-        if next.count > Config.transcriptLineLimit {
-            next = Array(next.suffix(Config.transcriptLineLimit))
-        }
-        lines = next
+        archivedLines.append(TranscriptLine(speaker: speaker, at: now, content: trimmed))
+        lines = Array(archivedLines.suffix(Config.transcriptLineLimit))
     }
 
     /// Recent transcript (speaker-labelled) for suggestion requests.
@@ -83,32 +86,32 @@ final class TranscriptStore: ObservableObject {
     private var fragmentsByLine: [UUID: [TranscriptFragment]] = [:]
     private var fragmentLine: [String: UUID] = [:]
     func ingest(_ fragment: TranscriptFragment) {
-        if let lineID = fragmentLine[fragment.id], let index = lines.firstIndex(where: { $0.id == lineID }),
+        if fragmentRevisions.last(where: { $0.id == fragment.id }) != fragment { fragmentRevisions.append(fragment) }
+        defer { lines = Array(archivedLines.suffix(Config.transcriptLineLimit)) }
+        if let lineID = fragmentLine[fragment.id], let index = archivedLines.firstIndex(where: { $0.id == lineID }),
            var parts = fragmentsByLine[lineID], let part = parts.firstIndex(where: { $0.id == fragment.id }) {
             parts[part] = fragment; fragmentsByLine[lineID] = parts
-            let old = lines[index]
-            lines[index] = TranscriptLine(id: old.id, speaker: old.speaker, at: old.at, content: parts.map(\.text).joined())
+            let old = archivedLines[index]
+            archivedLines[index] = TranscriptLine(id: old.id, speaker: old.speaker, at: old.at, content: parts.map(\.text).joined())
             return
         }
-        if let last = lines.last, last.speaker == fragment.speaker,
+        if let last = archivedLines.last, last.speaker == fragment.speaker,
            let end = lastFragmentEnd[fragment.speaker], fragment.startMS >= end,
            fragment.startMS - end < 1600, last.content.count < 1800 {
-            lines = Array(lines.dropLast()) + [TranscriptLine(id: last.id, speaker: last.speaker, at: last.at, content: last.content + fragment.text)]
+            archivedLines = Array(archivedLines.dropLast()) + [TranscriptLine(id: last.id, speaker: last.speaker, at: last.at, content: last.content + fragment.text)]
         } else {
-            lines = Array((lines + [TranscriptLine(speaker: fragment.speaker, at: fragment.receivedAt, content: fragment.text)]).suffix(Config.transcriptLineLimit))
+            archivedLines = archivedLines + [TranscriptLine(speaker: fragment.speaker, at: fragment.receivedAt, content: fragment.text)]
         }
-        if let id = lines.last?.id {
+        if let id = archivedLines.last?.id {
             fragmentsByLine[id, default: []].append(fragment); fragmentLine[fragment.id] = id
         }
-        let retained = Set(lines.map(\.id))
-        fragmentsByLine = fragmentsByLine.filter { retained.contains($0.key) }
-        fragmentLine = fragmentLine.filter { retained.contains($0.value) }
         lastFragmentEnd[fragment.speaker] = fragment.endMS
     }
 
     func clear() {
         fragmentsByLine = [:]; fragmentLine = [:]
         lastFragmentEnd = [:]
+        archivedLines = []; fragmentRevisions = []
         lines = []
         partialThem = ""
         partialYou = ""

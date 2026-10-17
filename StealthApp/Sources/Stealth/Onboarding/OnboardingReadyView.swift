@@ -110,7 +110,9 @@ struct OnboardingReadyView: View {
     }
     private var knowledgeDetail: String {
         if coordinator.settings.embeddingService == .openAI { return b("OpenAI · extracted text goes to the cloud", "OpenAI · 提取文本会发送至云端") }
-        if models.installed.contains(.embedding) { return b("Local model installed · import documents in Settings", "本地模型已安装 · 可在设置中导入资料") }
+        if models.checking == .embedding { return b("Running local model self-check", "正在进行本地模型自检") }
+        if let report = models.health[.embedding], !report.ready { return b("Self-check failed · open Services for help", "自检未通过 · 请到服务页查看处理办法") }
+        if models.installed.contains(.embedding) { return models.health[.embedding]?.ready == true ? b("Self-check passed · import documents in Settings", "自检通过 · 可在设置中导入资料") : b("Downloaded · run self-check in Services", "已下载 · 可到服务页运行自检") }
         if models.failures[.embedding] != nil { return b("Download failed · review and retry", "下载失败 · 可查看并重试") }
         return models.downloading == .embedding || models.queued.contains(.embedding) ? b("Downloading / queued", "正在下载或等待下载") : b("Local model not downloaded", "本地模型尚未下载")
     }

@@ -236,6 +236,22 @@ enum CoreChecks {
         echoWorker.close(); passed.append("native IPC delivers short flushed replies without waiting for a full read buffer")
         do { _ = try await echoWorker.call(["op": "ping"]); throw CheckError(description: "closed worker restarted") }
         catch is CancellationError { passed.append("closed local workers cannot restart after shutdown") }
+        for (code, expected) in [("embedding_context", "allocate inference memory"),
+                                 ("embedding_load", "runtime compatibility"),
+                                 ("model_load_failed", "runtime compatibility")] {
+            let failing = localFixture.appendingPathComponent("failing-" + code)
+            try "#!/bin/sh\nprintf '%s\\n' '{\"ready\":false,\"error\":\"\(code)\"}'\n".write(to: failing, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: failing.path)
+            let worker = LocalInferenceWorker(mode: "embedding", modelDirectory: localFixture, executable: failing)
+            do { _ = try await worker.call(["op": "ping"], timeout: 2); throw CheckError(description: "failed startup accepted") }
+            catch is CheckError { throw CheckError(description: "failed startup accepted") }
+            catch {
+                try expect(error.localizedDescription.contains(expected), "startup failure lost actionable stage")
+                try expect(!error.localizedDescription.contains("Download the model again"), "runtime failure blamed download")
+            }
+            worker.close()
+        }
+        passed.append("local startup distinguishes context allocation from model/runtime failures")
         let hanging = localFixture.appendingPathComponent("hanging-worker")
         try "#!/bin/sh\nprintf '%s\\n' '{\"ready\":true}'\nwhile :; do :; done\n".write(to: hanging, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hanging.path)

@@ -66,6 +66,8 @@ targets:
     sources:
       - path: Tests/CoreChecks.swift
       - path: Tests/NativeTests.swift
+      - path: Tests/ModelHealthTests.swift
+      - path: Tests/HistoryTests.swift
       - path: Tests/LayaTriggerChecks.swift
       - path: Tests/LayaCoordinatorTests.swift
       - path: Tests/LayaWorkerTests.swift

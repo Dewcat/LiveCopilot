@@ -155,19 +155,60 @@ public:
 class EmbeddingEngine {
     llama_model *model = nullptr;
     llama_context *context = nullptr;
+    std::string modelPath;
+    bool cpuOnly = false;
+    uint32_t capacity = 0;
+
+    bool loadModel(bool cpu) {
+        cpuOnly = cpu;
+        auto params = llama_model_default_params();
+        ggml_backend_dev_t noDevices[] = { nullptr };
+        params.n_gpu_layers = cpu ? 0 : 99;
+        if (cpu) params.devices = noDevices;
+        model = llama_model_load_from_file(modelPath.c_str(), params);
+        return model != nullptr;
+    }
+    bool createContext(uint32_t size) {
+        auto params = llama_context_default_params();
+        // BGE is bidirectional: the whole input must fit in one microbatch.
+        // Reserve for the actual input, rather than an 8192-token attention graph.
+        params.n_ctx = size; params.n_batch = size; params.n_ubatch = size;
+        params.embeddings = true; params.pooling_type = LLAMA_POOLING_TYPE_CLS;
+        params.n_threads = 4; params.n_threads_batch = 4;
+        if (cpuOnly) { params.offload_kqv = false; params.op_offload = false; }
+        context = llama_init_from_model(model, params);
+        if (context) capacity = size;
+        return context != nullptr;
+    }
+    void ensureContext(uint32_t count) {
+        if (context && capacity >= count) return;
+        uint32_t size = 512;
+        while (size < count) size *= 2;
+        if (context) { llama_free(context); context = nullptr; }
+        capacity = 0;
+        if (createContext(size)) return;
+        if (!cpuOnly) {
+            llama_model_free(model); model = nullptr;
+            if (!loadModel(true)) throw std::runtime_error("embedding_load");
+            if (createContext(size)) return;
+        }
+        throw std::runtime_error("embedding_context");
+    }
 public:
-    explicit EmbeddingEngine(const std::string &root) {
+    explicit EmbeddingEngine(const std::string &root, bool forceCPU = false)
+        : modelPath(root + "/bge-m3-Q8_0.gguf") {
         llama_log_set([](ggml_log_level, const char *, void *) {}, nullptr);
         llama_backend_init();
-        auto m = llama_model_default_params(); m.n_gpu_layers = 99;
-        model = llama_model_load_from_file((root + "/bge-m3-Q8_0.gguf").c_str(), m);
-        if (!model) throw std::runtime_error("embedding_load");
-        auto c = llama_context_default_params();
-        c.n_ctx = 8192; c.n_batch = 8192; c.n_ubatch = 8192;
-        c.embeddings = true; c.pooling_type = LLAMA_POOLING_TYPE_CLS;
-        c.n_threads = 4; c.n_threads_batch = 4;
-        context = llama_init_from_model(model, c);
-        if (!context) { llama_model_free(model); model = nullptr; throw std::runtime_error("embedding_context"); }
+        try {
+            if (!loadModel(forceCPU) && (forceCPU || !loadModel(true)))
+                throw std::runtime_error("embedding_load");
+            ensureContext(512);
+        } catch (...) {
+            if (context) llama_free(context);
+            if (model) llama_model_free(model);
+            llama_backend_free();
+            throw;
+        }
     }
     ~EmbeddingEngine() {
         if (context) llama_free(context);
@@ -181,6 +222,7 @@ public:
         std::vector<llama_token> tokens(utf8.length + 8);
         int count = llama_tokenize(vocab, static_cast<const char *>(utf8.bytes), static_cast<int>(utf8.length), tokens.data(), static_cast<int>(tokens.size()), true, false);
         if (count <= 0 || count > 8192) throw std::runtime_error("token_limit");
+        ensureContext(static_cast<uint32_t>(count));
         auto batch = llama_batch_init(count, 0, 1); batch.n_tokens = count;
         for (int i = 0; i < count; ++i) {
             batch.token[i] = tokens[i]; batch.pos[i] = i; batch.n_seq_id[i] = 1;
@@ -215,7 +257,7 @@ int main(int argc, char **argv) {
             const std::string mode(argv[1]), root(argv[2]);
             if (mode == "paraformer") streamingSpeech = std::make_unique<StreamingSpeechEngine>(root);
             else if (mode == "zipformer") streamingSpeech = std::make_unique<StreamingSpeechEngine>(root, true);
-            else if (mode == "embedding") embedding = std::make_unique<EmbeddingEngine>(root);
+            else if (mode == "embedding" || mode == "embedding-cpu") embedding = std::make_unique<EmbeddingEngine>(root, mode == "embedding-cpu");
             else return 2;
             reply(@{ @"ready": @YES, @"protocol": @1 });
             std::string line;
@@ -241,9 +283,18 @@ int main(int argc, char **argv) {
                             response[@"vector"] = embedding->embed(command[@"text"]);
                         } else throw std::runtime_error("operation");
                         reply(response);
+                    } catch (const std::runtime_error &error) {
+                        NSString *code = strcmp(error.what(), "embedding_context") == 0 ? @"embedding_context" : @"inference_failed";
+                        reply(@{ @"id": idValue, @"error": code });
                     } catch (...) { reply(@{ @"id": idValue, @"error": @"inference_failed" }); }
                 }
             }
+        } catch (const std::runtime_error &error) {
+            // Only fixed stage codes cross IPC; never expose paths or model/input data.
+            NSString *code = @"model_load_failed";
+            if (strcmp(error.what(), "embedding_context") == 0) code = @"embedding_context";
+            else if (strcmp(error.what(), "embedding_load") == 0) code = @"embedding_load";
+            reply(@{ @"ready": @NO, @"error": code }); return 1;
         } catch (...) { reply(@{ @"ready": @NO, @"error": @"model_load_failed" }); return 1; }
     }
     return 0;

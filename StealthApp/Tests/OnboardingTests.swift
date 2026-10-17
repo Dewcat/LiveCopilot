@@ -440,6 +440,7 @@ final class OnboardingTests: XCTestCase {
         await fulfillment(of: [completed, finished], timeout: 5)
         XCTAssertEqual(started, [.streamingSpeech, .embedding])
         XCTAssertEqual(manager.failures[.streamingSpeech], "fixture transfer failed")
+        await manager.shutdown()
         manager.enqueue([.embedding])
         XCTAssertNil(manager.downloading)
         XCTAssertTrue(manager.queued.isEmpty)
