@@ -497,7 +497,7 @@ struct SettingsView: View {
         } catch { connectionMessage = error.localizedDescription }
     }
     private var localCost: some View {
-        Text(b("Local/free means no API usage fee. The first model download needs a network connection and disk space; inference uses this Mac's memory and compute. Selected excerpts still go to your analysis service when requesting an answer.", "本地/免费指无 API 调用费。首次模型下载需要联网与磁盘空间，运行占用本机内存与计算资源；请求回答时，选中的文本证据仍会发送给分析服务。")).font(.caption).foregroundStyle(.secondary)
+        Text(b("Local/free means no API usage fee. The first model download needs a network connection and disk space.", "本地／免费指无 API 调用费。首次模型下载需要联网与磁盘空间。")).font(.caption).foregroundStyle(.secondary)
     }
     private func priceNote(_ message: String, url: String?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -732,17 +732,17 @@ private struct LocalModelCard: View {
                 if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty { Text(t(manager.message)).font(.caption).foregroundStyle(.secondary) }
             }
             if let report = manager.health[kind] {
-                Button(copiedDiagnostics ? (language == .english ? "Copied" : "已复制") : (language == .english ? "Copy diagnostics" : "复制诊断信息")) {
-                    NSPasteboard.general.clearContents()
-                    copiedDiagnostics = NSPasteboard.general.setString(report.diagnostic(kind: kind), forType: .string)
-                }.accessibilityIdentifier("copy-diagnostics-" + kind.rawValue)
-                Text(report.advice(english: language == .english))
-                    .font(.caption).foregroundStyle(report.ready ? Color.secondary : Color.orange)
-                    .accessibilityIdentifier("selfcheck-result-" + kind.rawValue)
-                Text(language == .english ? "Includes device, app version and self-check results. No documents or API keys." : "仅包含设备、应用版本和自检结果，不含文档内容或 API Key。")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 12) {
+                    Button(copiedDiagnostics ? (language == .english ? "Copied" : "已复制") : (language == .english ? "Copy diagnostics" : "复制诊断信息")) {
+                        NSPasteboard.general.clearContents()
+                        copiedDiagnostics = NSPasteboard.general.setString(report.diagnostic(kind: kind), forType: .string)
+                    }.fixedSize().accessibilityIdentifier("copy-diagnostics-" + kind.rawValue)
+                    Text(report.advice(english: language == .english))
+                        .font(.caption).foregroundStyle(report.ready ? Color.secondary : Color.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("selfcheck-result-" + kind.rawValue)
+                }
             }
-            Text(t("Downloaded once, stored on this Mac. No Python, Ollama or Docker installation is required.")).font(.caption).foregroundStyle(.secondary)
         }.padding(16).background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
             .onAppear { manager.refresh() }
     }

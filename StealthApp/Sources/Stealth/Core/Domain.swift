@@ -26,7 +26,7 @@ struct AppSettings: Codable, Equatable {
     var listeningService = ListeningService.zipformer
     var liveSpeechLanguage = LiveSpeechLanguage.mixed
     var professionalTerms = ProfessionalTerms.examples
-    var professionalTermsEnabled = true
+    var professionalTermsEnabled = false
     var appleSpeechLanguage = AppleSpeechLanguage.chinese
     var embeddingService = EmbeddingService.openAI
     var liveModel = "gpt-live-1"
@@ -92,7 +92,7 @@ struct AppSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        professionalTermsEnabled = try c.decodeIfPresent(Bool.self, forKey: .professionalTermsEnabled) ?? true
+        professionalTermsEnabled = try c.decodeIfPresent(Bool.self, forKey: .professionalTermsEnabled) ?? false
         professionalTerms = ProfessionalTerms.clean((try c.decodeIfPresent([String].self, forKey: .professionalTerms) ?? ProfessionalTerms.examples).joined(separator: "\n"))
         knowledgeMode = try c.decodeIfPresent(KnowledgeMode.self, forKey: .knowledgeMode) ?? knowledgeMode
         answerLanguage = try c.decodeIfPresent(AnswerLanguage.self, forKey: .answerLanguage) ?? answerLanguage
