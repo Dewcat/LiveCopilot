@@ -43,7 +43,7 @@ The local trigger recognizes explicit Chinese/English questions and requests, re
 
 ## V1.2.2 streaming acceptance
 
-The bilingual model produces replaceable live captions and stable final sentences; Chinese/English fixture question delegation, no self-delegation, silence suppression and stop/normal-endpoint equivalence passed. Streaming preview count was 6 for the English fixture and 10 for Chinese. **English terminology was imperfect**: “latency” became “lency” in the live fixture, also misrecognized by the upstream example. Chinese recognized “延迟” but rendered method B as “方法比.” For English-heavy conversations, compare Apple English or GPT-Live-1; support for a language is not an accuracy guarantee. See [the exact verification boundaries](VERIFICATION.md). Final GUI and hardware capture checks remain pending because the Mac was locked.
+The bilingual model produces replaceable live captions and stable final sentences; Chinese/English fixture question delegation, no self-delegation, silence suppression and stop/normal-endpoint equivalence passed. Streaming preview count was 6 for the English fixture and 10 for Chinese. **English terminology was imperfect**: “latency” became “lency” in the live fixture, also misrecognized by the upstream example. Chinese recognized the Chinese word for “latency” but rendered method B as a Chinese homophone of “method B.” For English-heavy conversations, compare Apple English or GPT-Live-1; support for a language is not an accuracy guarantee. See [the exact verification boundaries](VERIFICATION.md). Final GUI and hardware capture checks remain pending because the Mac was locked.
 
 ## Recorded verification — 2026-09-14
 

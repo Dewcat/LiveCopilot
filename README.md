@@ -1,127 +1,100 @@
 # LiveCopilot
 
-<img src="assets/brand/LiveCopilot-preview.png" width="100" alt="LiveCopilot Logo">
+<img src="assets/brand/LiveCopilot-preview.png" width="100" alt="LiveCopilot logo">
 
-**中文** · [English](README.en.md) · [中文介绍页](https://carey-bk.github.io/LiveCopilot/) · [English website](https://carey-bk.github.io/LiveCopilot/en/)
+**English documentation** · [English website](https://carey-bk.github.io/LiveCopilot/en/) · [Chinese website](https://carey-bk.github.io/LiveCopilot/)
 
-基于 [vortechron/stealth](https://github.com/vortechron/stealth) 的原生 macOS 个人 AI 助手，面向面试、会议和学术答辩。保留 Swift/SwiftUI、ScreenCaptureKit 系统音频、AVAudioEngine 麦克风、菜单栏、悬浮窗、全局快捷键和本地历史。
+A native macOS conversation copilot for interviews, meetings, and academic discussions. Follow live speech, retrieve relevant material from your own documents, and get suggestions you can say aloud. You can also type a question with listening off.
 
-V2.2.0 可选择 **Apple SpeechAnalyzer / SpeechTranscriber 本地流式识别**、**本地 Paraformer 中英流式识别** 或 GPT-Live-1 进行语音识别，知识库可选择 **本地 BGE-M3** 或 OpenAI Embeddings，分析可选 OpenAI、DeepSeek、Qwen、GLM、Kimi 或 OpenAI 兼容服务。**关闭监听时也可以直接输入问题。** 无 AI 语音播放、云端向量库、Ollama 或账号系统。
+Built with Swift/SwiftUI on the native macOS foundation of [Stealth](https://github.com/vortechron/stealth). No LiveCopilot account, developer-operated relay server, cloud vector database, or spoken AI responses.
 
-**1.4.0** 移除非流式 SenseVoiceSmall，保留 Apple、Paraformer 和 GPT-Live-1 三种流式识别；新增转写区与回答区独立字号（11–28 pt）以及 Qwen、GLM、Kimi 分析服务预设。旧 SenseVoice 配置自动迁移至 Paraformer，其他偏好与已有模型文件保留。详见 [1.4.0 更新与验收](docs/V1_4_0_UPDATE.md) 和 [服务选择指南](docs/SERVICE_GUIDE.md)。
+## Release history
 
-**1.4.1** 为 Developer ID 正式签名与 Apple 公证版，保留 1.4.0 的功能。应用、本地推理组件和 DMG 使用同一开发者身份；公证票据随包附带。详见 [1.4.1 发布验证](docs/V1_4_1_UPDATE.md)。
+Version **1.4.0** adds independent transcript/answer font sizes (11–28 pt) and Qwen, GLM, and Kimi analysis presets. The retired SenseVoiceSmall selection migrates to Paraformer without resetting other preferences or deleting downloaded weights. See [release notes](docs/V1_4_0_UPDATE.md) and the [service guide](docs/SERVICE_GUIDE.md).
 
-**2.0.0** 增加 Jev Mode 本地 Laya 自动触发、ModelScope 固定修订模型分发（失败后尝试其他来源）、真实下载进度与速度、GPT-Live-1 识别语言偏好，以及流式字幕和界面修复。Laya 需要 Apple Silicon 与 macOS 14+。升级保留已下载模型、设置和用户数据。
+Version **1.4.1** retains these features and adds Developer ID signing, hardened runtime, and Apple notarization. Both the app and DMG include stapled tickets. See [distribution validation](docs/V1_4_1_UPDATE.md).
 
-**2.1.0** 新增六步首次使用引导和应用内更新器。可以从 **设置 → 关于 → 检查更新** 或应用菜单检查新版，按需开启自动检查；下载和安装由你确认。升级保留模型、资料、历史与密钥。2.0 及更早版本需先手动安装一次 2.1。详见 [2.1 更新说明](docs/V2_1_0_UPDATE.md)。
+Version **2.0.0** adds Jev Mode local Laya triggering, SHA-256 verified ModelScope model delivery with fallback sources, real download progress and speed, GPT-Live-1 transcription language preferences, and caption/UI fixes. Laya requires Apple Silicon and macOS 14+. Updating preserves downloaded models, settings, and user data.
 
-**2.2.0** 新增默认混合知识回答、Auto／中文／English 回答语言、模型性能参考和更及时的自动建议；改进悬浮窗共享保护，支持自定义显示快捷键。详见 [2.2 更新说明](docs/releases/2.2.0.md)。
+Version **2.1.0** adds a six-step first-run guide and in-app updates. Use **Settings → About → Check for Updates**, or the application menu. Automatic checks are optional; downloading and installation require confirmation. Models, documents, history, and keys are preserved. Versions 2.0 and earlier need one manual upgrade to 2.1 first. See [2.1 release notes](docs/V2_1_0_UPDATE.md).
 
-## 下载与安装
+Version **2.2.0** adds hybrid knowledge, Auto/Chinese/English answer language, model performance references, faster automatic suggestions, improved overlay sharing protection, and a configurable overlay shortcut. See [2.2 release notes](docs/releases/2.2.0.md).
 
-从 [GitHub Releases](https://github.com/carey-bk/LiveCopilot/releases/tag/v2.2.0) 下载 **LiveCopilot-2.2.0-macOS-universal.dmg**。支持 **macOS 14+、Apple Silicon 和 Intel**；Apple 本地识别另需 macOS 26+ 和受支持的设备。直接安装无需 Xcode。
+## Development changes since 2.3
 
-1. 打开 DMG，将 `LiveCopilot.app` 拖到 `Applications`，然后从应用程序文件夹启动。没有管理员权限时可复制到 `~/Applications`。
-2. 2.2.0 已由 **Developer ID Application: Bokai Zhang (666N9BJMD7)** 签名，应用与 DMG 均通过 Apple 公证并附带票据，详见 [发布验证](docs/releases/2.2.0-validation.md)。首次从互联网下载打开时，macOS 仍可能显示标准确认提示。
-3. 首次启动跟随六步引导选择语言、使用方式、模型、权限和回答服务；也可稍后在设置中完成。点击菜单栏波形图标打开设置，`⌥H` 显示或隐藏悬浮窗。1.1.1 起也显示 Dock 图标，点击可恢复悬浮窗。
+The current development checkout includes Zipformer as the recommended local Chinese/English speech engine, optional terminology enhancement (off by default), real model-load self-checks and copyable diagnostics, and complete multi-turn session history with search, Markdown/TXT export, citations, automatic titles, and manual or automatic renaming. The default retrieval count is five passages. These changes are not a claim that a new public release has shipped.
 
-安装包不含 API Key、个人文档、会话历史或知识库。已有用户升级前先退出旧版，替换应用不会自动删除本地数据；macOS 可能重新询问权限。完整说明见 [安装说明](docs/INSTALL.txt)。
+The accepted fine-tuned Laya response checkpoint is currently bundled in the locally installed app. A clean source checkout must explicitly stage and verify it before distribution; the existing ModelScope Laya download is the older upstream model. See [model release readiness](docs/MODEL_RELEASE_READINESS.md).
 
-## 首次配置与使用
+## Download
 
-1. 点击悬浮窗齿轮，进入 **服务 → 实时服务**，选择本地识别并下载模型，或选择 OpenAI Live 并配置 Key。在软件中保存 Key 后，密钥保存在应用管理的 macOS Keychain 项（`LiveCopilot-Credentials-v1`），以后启动自动复用。兼容旧 `LiveCopilot-OpenAI` 项；如需授权，点击“授权已保存的密钥”完成一次迁移，无需重新粘贴。开发环境仍支持 `OPENAI_API_KEY`。
+[Latest published release, downloads, and checksums](https://github.com/carey-bk/LiveCopilot/releases/latest)
 
-   启动和切换服务只做静默检查，不主动弹出授权窗口。显示“API Key 已保存 · 待授权”时，在服务页点击授权按钮；系统密码只输入 macOS 窗口。读取权限与 Key 是否有效是两项独立检查。重新打开已启动的 LiveCopilot 会恢复悬浮窗；`⌥H` 可隐藏它。
-2. **服务 → 知识库服务** 选择“本地 · BGE-M3”并下载模型（约 635 MB），或保留 OpenAI Embeddings。**服务 → 分析服务** 可选择 DeepSeek 并配置独立密钥。语音与向量均选本地、分析选 DeepSeek 时，无需 OpenAI Key；模型下载后只有生成建议需要连接分析 API。旧配置升级时保持原有云端选择。
-3. 设置 → 知识库 → 导入文档，支持 PDF、Markdown、TXT 和 DOCX；扫描 PDF 需预先 OCR。本地向量模式不上传索引文本，OpenAI 模式会发送提取文本。切换向量模型后，点击“重建全部索引”，完成前旧资料仍可进行关键词检索。生成回答时，相关资料片段会发送至所选分析服务。
-4. 选择 Interview、Meeting 或 Academic Defense，以及 Remote Meeting / In-Person 模式。
-5. 点击播放开始监听，按系统提示允许所需音频权限。远程模式使用系统音频 `Them` 和麦克风 `You`；现场模式仅使用麦克风，标为 `Room`，不承诺说话人分离。
-6. GPT-Live-1 自行决定何时委派完整问题；Apple 与 Paraformer 使用本地 Laya 在语段结束后判断，Jev Mode 可调阈值。两种方式都可能漏判或误触发。默认 `⌃⌥Space` 根据对话生成回答，`⌃⌥S` 总结，`⌃⌥X` 追问，`⌥H` 显示/隐藏悬浮窗（已保存的自定义组合保留）。总结与追问可在通用设置中独立关闭，关闭后按钮隐藏、快捷键停用。
-7. 直接在下方文本框输入问题，点击 **Ask** 或按 Return。可勾选是否附加近期对话；不要求正在监听。回答流式展示，`[S1]` 等对应可展开的本地来源。
+Requires **macOS 14+**, on Apple Silicon or Intel. Apple Speech additionally requires **macOS 26+**, supported hardware, and a supported language. No Xcode, Python, Ollama, or developer tools are needed to use the packaged app.
 
-菜单栏波形图标可打开设置和历史。1.2.1 起悬浮窗默认隐藏于屏幕右侧，悬停右边缘可唤出，也可点击 Dock 或按 `⌥H`；固定按钮关闭贴边隐藏。空白窗口保持紧凑，内容增加后向下展开。四边具有 12 pt 缩放热区，四角为 28 × 28 pt；拖动上下边缘切换为手动高度，取消贴边隐藏后可从头部移动窗口。两个模式均可在 **通用 → 悬浮窗** 中切换。
+Quit the previous version, open the DMG, and drag `LiveCopilot.app` into Applications (or `~/Applications`). Keep the app at a consistent path.
 
-顶部 **↻ 刷新会话** 清空当前转写、输入草稿和回答上下文，窗口恢复紧凑并重新启用自动高度。正在监听时继续新会话，旧音频缓冲和旧回答不会回填。知识库、密钥与已保存历史不受影响；被丢弃的当前监听会话不归档。
+Published version 2.2.0 was signed by **Developer ID Application: Bokai Zhang (666N9BJMD7)** and notarized by Apple. Both the app and DMG carry stapled tickets; see [release validation](docs/releases/2.2.0-validation.md). macOS may still show its standard first-download confirmation.
 
-生成回答先给可直接念出的短段落，必要的依据、引用与补充单独放后面；可以使用相关常识和合理推理，但不得虚构个人经历或项目数据。总结、追问分别使用独立任务提示词。
+## Choose your services
 
-## 语言、底色和服务配置
+| Stage | Options | Data and cost |
+|---|---|---|
+| Local speech | Zipformer (recommended for Chinese/English); Paraformer; Apple SpeechAnalyzer / SpeechTranscriber | On-device recognition with no API usage fee. Initial model downloads require internet. |
+| Cloud speech | OpenAI Live | Sends audio to OpenAI; billed to your account. Realtime transcription and semantic question detection. |
+| Embeddings | Local BGE-M3 or OpenAI Embeddings | BGE-M3 processes text on-device; OpenAI sends indexing/query text to its API. Retrieval stays local. |
+| Answers | OpenAI, DeepSeek, Qwen, GLM, Kimi, or a compatible streaming Chat Completions API | Receives the question, relevant conversation, and retrieved passages. Bring your own service key. |
 
-- **通用 → 界面语言**：跟随系统、English、简体中文，立即生效。回答跟随提问语言。
-- **通用 → 语言与外观 → 字号**：流式识别区与回答区分别调节，11–28 pt，即时生效并独立保存；长内容自动换行并可滚动。
-- **通用 → 窗口底色**：半透明毛玻璃／微透磨砂／纯白底色。微透与白底使用浅色控件与深色文字。
-- **服务 → 实时服务／知识库服务**：独立选择本地或 OpenAI。选择 OpenAI 时，Live 和 Embeddings 共用现有 Key；界面显示固定掩码，点击“更换密钥”才打开输入框，不回填真实 Key。
-- **服务 → 分析服务**：选择分析供应商。默认沿用实时服务的 OpenAI；DeepSeek 使用独立 Key，默认模型 `deepseek-flash`，优先考虑速度和费用，也可自行修改。兼容服务填写 HTTPS Base URL、Chat Completions 路径和模型，先保存连接，再配置该地址的 Key。
-- **Qwen / GLM / Kimi**：分别预填 `qwen3.8-flash`、`glm-5.3-flash`、`kimi-k2.6` 和国内通用 API 地址，优先考虑临场回答的速度与费用；OpenAI 分析默认 `gpt-6.1-sol`，DeepSeek 默认 `deepseek-flash`。可修改模型、地域/业务空间 Base URL 和思考模式。先保存连接，再输入自己的 Key。厂商与端点之间的密钥互相隔离，不会继承 OpenAI Key。GLM Coding Plan 不等同于通用 API；Qwen 的 Key 必须与地域对应。
-- 更换分析模型不需要重建知识库。自定义 API 地址改变后不会沿用旧地址的密钥。新三家服务已完成协议及 Mock 测试，未使用真实 Qwen、GLM、Kimi Key 联调；实际账户权限、余额、模型可用性需在本机验证。不要把 Key 发到聊天或写入仓库。
+Choose local speech + BGE-M3 + DeepSeek to keep recognition and indexing on your Mac while using DeepSeek for answers. No OpenAI key is needed for that combination. Local models still use disk space, memory, and compute; analysis still sends relevant text to your chosen provider.
 
-早期版本通过 `NSWindow.sharingType = .none` 对全部窗口请求截图排除。1.1.1 起设置和历史页允许截图；**通用 → 在截图和屏幕共享中隐藏悬浮窗** 控制悬浮窗，默认保留隐藏，关闭后可截图。实际排除效果仍依赖 macOS 和具体会议软件。
+Zipformer and Paraformer update Chinese/English caption previews as you speak. Zipformer also supports optional terminology enhancement. Apple streams supported languages using on-device models. Compare accuracy and latency using your own voice, accent, hardware, and audio conditions. Local automatic suggestions use Laya to assess completed questions after speech pauses. GPT-Live-1 delegates questions using its own semantic judgment.
 
-详见 [V1.1 更新与验证](docs/V1_1_UPDATE.md)。
+## Get started
 
-## V1 交付记录（2026-09-14，后续已升级）
+1. Follow the six-step first-run guide, or open Settings → Services. Select a speech route and download its local model, or configure OpenAI Live.
+2. Select BGE-M3 or OpenAI Embeddings under the knowledge service. Select an analysis provider and save its API key.
+3. Optionally import PDF, Markdown, TXT, or DOCX in Knowledge. Scanned PDFs require external OCR. Rebuild the index after changing embedding models.
+4. Choose Interview, Meeting, or Academic Defense. Remote Meeting captures system audio plus an optional microphone; In-Person uses the microphone without promising speaker separation.
+5. Start listening and grant the requested macOS audio permissions. Or type a question without starting capture.
 
-初始 V1 交付为 **1.0.0 / 20260914.075740**。原生 Release 编译、34 项核心检查和 9 个 XCTest 用例通过；开发机上完成真实 Embeddings、带 `[S1]` 引用的流式 Responses、官方 Live 的合成语音转写/委派/关闭验证。V1.1 增加到 43 项核心检查和 12 个 XCTest 用例；第三方服务仍仅完成 Mock 协议与原生 UI 验证。
+Keys are securely stored in the local macOS Keychain. Startup checks silently; a saved-but-inaccessible key is shown as needing authorization. Old manually created `LiveCopilot-OpenAI` and analysis items can be imported once with **Authorize saved key**. Keys never enter source, logs, or editable fields.
 
-实际麦克风/系统音频、其他应用前台时的快捷键和会议软件共享排除效果仍需按[首次体验清单](docs/VERIFICATION.md)操作核对；不将合成音频联调视为硬件验证。
+## A small window for the conversation
 
-## 验证与开发
+- Chinese and English UI; glass, soft frost, or white backgrounds. Separate transcript and answer font controls under General → Language & appearance, applied immediately and saved.
+- Compact when empty, taller as content arrives. Manual resize and right-edge reveal.
+- **Refresh** clears the current transcript, draft, answer, and context. Active listening starts fresh; knowledge and saved history remain.
+- Replies use spoken paragraphs, with evidence/notes below when useful. General knowledge and reasoning can extend the documents without inventing personal experience.
+- Generate answer, recap, and follow-up have distinct task prompts. Source passages can be expanded.
+- **About** links to the author's GitHub, repository, and bilingual product guide.
 
-源码构建需要完整 **Xcode** 和 XcodeGen（`brew install xcodegen`，或设置 `XCODEGEN_BIN`）。首次构建会下载并校验固定版本的 Sparkle 更新框架及原生 sherpa-onnx/llama.cpp 运行库，再编译通用辅助程序；已安装的成品无需开发环境。执行 `./StealthApp/run.sh` 会编译、签名并安装到 `~/Applications/LiveCopilot.app`，旧应用会备份。
+`Option + H` toggles the overlay. Generate answer, recap, and follow-up shortcuts are configurable. The 2.0.0 defaults are Control–Option–Space, Control–Option–S and Control–Option–X; saved custom bindings are preserved. Recap and follow-up can be disabled independently in General, hiding their buttons and releasing their shortcuts. Screenshot/sharing exclusion is optional; its behavior depends on macOS and the capture application. Settings and History remain capturable.
+
+Qwen, GLM, and Kimi presets use streamed Chat Completions with provider-specific thinking controls. Defaults are `qwen3.8-flash`, `glm-5.3-flash`, and `kimi-k2.6`; OpenAI uses `gpt-6.1-sol` and DeepSeek uses `deepseek-flash` on domestic general API endpoints. Edit the base URL for a matching region/account, save, then configure its key. Keys are isolated by provider and endpoint. Protocol and mock tests passed; real account access has not been tested with Qwen, GLM, or Kimi credentials. No keys are needed for development/mock testing; enter yours only in the app to validate a real request.
+
+## Privacy and limits
+
+The DMG contains no keys, personal documents, history, or knowledge database. Documents, indexes, and session history stay local. Selected cloud services receive the content described above; their retention policies still apply. Refreshing or deleting local data does not retract previous requests.
+
+Check important facts and citations. The app does not provide OCR, reliable multi-speaker diarization, or cloud backups. Headphones help prevent remote audio leaking into microphone transcription. See [privacy boundaries](docs/PRIVACY.md), [local models](docs/LOCAL_MODELS.md), and [verification notes](docs/VERIFICATION.md).
+
+## Build and verify
+
+Install full Xcode and XcodeGen, then:
 
 ```bash
-# 不使用 Key、不调用 API 的确定性检查
 ./StealthApp/scripts/test-core.sh
-
-# 原生 Release 编译
 ./StealthApp/scripts/build.sh
-
-# 从干净且已提交的源码构建 Universal DMG，输出到 dist/
-./StealthApp/scripts/package-dmg.sh
-
-# Xcode XCTest（scheme 自动使用隔离的 Mock 模式）
 xcodebuild -project StealthApp/LiveCopilot.xcodeproj -scheme LiveCopilot \
-  -configuration Debug -derivedDataPath StealthApp/build \
-  -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test
-
-# 可实际操作的 Mock 应用；无需音频权限或 Key
-./StealthApp/run.sh --mock
-
-# 以下均为明确选择运行的真实 API 联调；前一条只检查 Keychain
-./StealthApp/scripts/integration.sh --keychain-check
-./StealthApp/scripts/integration.sh
-./StealthApp/scripts/integration.sh --live
+  -configuration Debug -derivedDataPath StealthApp/build CODE_SIGNING_ALLOWED=NO test
 ```
 
-真实联调使用临时生成的合成文档，验证 embeddings → 本地混合检索 → Responses 流式答案和引用。`--live` 额外测试 Live 启动、短暂静音输入及正常关闭，会产生少量 API 费用。不要把真实 Key 放进命令行参数、源码、日志或聊天。
+The build downloads checksum-pinned Sparkle and sherpa-onnx/llama.cpp runtimes and compiles a universal inference helper. Debug uses a separate bundle identifier to avoid taking over production permissions. Mock checks do not use real keys or paid APIs.
 
-如果确实需要环境变量，在本机 zsh 中使用隐藏输入，然后从**同一终端直接运行二进制**：
+From a clean, committed checkout, `./StealthApp/scripts/package-dmg.sh` builds the DMG. See [publishing instructions](docs/RELEASING.md). Preview the bilingual site with `python3 StealthApp/scripts/build-site.py`, then serve `_site/` with a local HTTP server.
 
-```zsh
-read -s 'OPENAI_API_KEY?OpenAI API key: '; echo
-export OPENAI_API_KEY
-"$HOME/Applications/LiveCopilot.app/Contents/MacOS/LiveCopilot"
-unset OPENAI_API_KEY
-```
+## Attribution
 
-通过 Finder / `open` 启动的 GUI 应用不保证继承当前终端环境变量，通常使用 Keychain 即可。优先级：应用管理的 Keychain 项 → 尚未迁移的旧 Keychain 项 → 当前进程 `OPENAI_API_KEY`（仅 OpenAI、无保存项时）。删除已保存密钥后不会回退并复活旧 Key。
+Derived from Stealth commit `02b78cc82195a1711e3de11adfaed26011635dae`, by vortechron. Original Git history and the [MIT license](LICENSE) are preserved. Inference runtimes retain their own notices in the app. Editable SVG logos are in [assets/brand](assets/brand/README.md).
 
-## 边界与限制
-
-- Live 使用当前官方 `/v1/live/sessions` 和 client delegation，未以旧 Realtime 更换模型名代替。无端点自动降级。
-- 本地索引保存来源、文本和向量；选择 BGE-M3 时查询向量也在本机生成，选择 OpenAI 时请求 Embeddings API。检索排名在本机计算；embedding 请求失败时使用本地关键词检索。
-- 回答结合文档证据和模型常识；来源列表是检索出的证据，不代表每条都被引用。应核对关键数字和结论。
-- 远程模式最多同时使用两个 Live 会话，现场模式一个；Live 按时长计费，结束使用时停止监听或退出。
-- 共享麦克风不提供可靠 diarization；耳机可减少 `Them` 音频漏入 `You`。自动识别是保守的，并保留手动触发。
-- 悬浮窗的截图排除可以在通用设置中切换。排除效果取决于 macOS 和会议软件，必须用实际共享画面验证，不能仅凭该属性视为已验证。
-- 1.4.1 起使用稳定的 Developer ID 签名。从旧 ad-hoc 版本首次迁移可能需要重新允许录屏或钥匙串访问；后续同一团队和应用身份的更新保持签名身份连续性，但不能代替 macOS 的权限判定。参见[发布说明](docs/RELEASING.md)。
-- 索引限制单文件 50 MB、4,000 chunks；不提供 OCR、复杂 DOCX 排版还原或云备份。
-
-详见 [架构与协议](docs/ARCHITECTURE.md)、[隐私边界](docs/PRIVACY.md)、[实测清单与故障排查](docs/VERIFICATION.md)、[开发计划和证据](docs/IMPLEMENTATION_PLAN.md)。最终验收依据为用户提供的 [开发需求](docs/livecopilot_goal.md)。
-
-## 来源与许可
-
-派生于 Stealth commit `02b78cc82195a1711e3de11adfaed26011635dae`，原作者 vortechron，MIT 许可保持不变，并保留原始 Git 历史。LiveCopilot 独立发布于 [carey-bk/LiveCopilot](https://github.com/carey-bk/LiveCopilot)；原始项目见 [vortechron/stealth](https://github.com/vortechron/stealth)。打包与发布流程见 [发布说明](docs/RELEASING.md)。
-
-图标的可编辑 SVG、单色标志与生成方式见 [品牌文件](assets/brand/README.md)。本地 FunASR 使用 Paraformer 流式模型；Apple 本地识别和 OpenAI Live 仍可切换。
+[Author: carey-bk](https://github.com/carey-bk) · [LiveCopilot repository](https://github.com/carey-bk/LiveCopilot)

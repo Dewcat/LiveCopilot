@@ -1,56 +1,53 @@
-# 新用户引导 · 第一批
+# First-run onboarding — phase 1
 
-状态：本地实现与预览验收完成，尚未发布。基于 `ada250f`（2.0.0）开发。
+Historical status: local implementation and preview acceptance completed, not yet published. Based on `ada250f` (2.0.0).
 
-## 用户流程
+## User flow
 
-原生独立窗口，六步：语言 → 功能与使用方式 → 本地能力 → 回答服务 → 权限 → 首次体验。
+A separate native window has six steps: language → features/use mode → local capabilities → answer service → permissions → first experience.
 
-| 步骤 | 行为 |
+| Step | Behavior |
 | --- | --- |
-| 语言 | 跟随系统、简体中文、English；切换立即生效。 |
-| 功能与方式 | 示例说明转写、Jev Mode 与回答建议；选择远程会议、现场交流或先输入问题。 |
-| 本地能力 | 选择 Paraformer、Apple 或云端识别，按需启用资料检索、Jev Mode；检测已有资源，显示新增下载估算和可用空间。 |
-| 回答服务 | 复用现有服务和钥匙串配置；高级连接配置、显式测试、取消与失败提示。测试只发送合成问题，不附带历史或资料。 |
-| 权限 | 远程模式按需请求系统音频和麦克风；现场模式只需麦克风；输入模式不需要音频权限。授权本身不会开始录音。 |
-| 首次体验 | 分别显示模型、权限、回答服务等状态；支持试问、示例和进入悬浮窗。安装完成、保存密钥与验证成功分别表示。 |
+| Language | System, Simplified Chinese, or English; changes apply immediately. |
+| Features and mode | Examples explain transcription, Jev Mode, and suggestions; choose remote meeting, in-person, or typing first. |
+| Local capabilities | Select Paraformer, Apple, or cloud recognition, optionally prepare retrieval/Jev Mode, detect existing resources, and show additional download size and available space. These were the options at this historical checkpoint. |
+| Answer service | Reuse services and Keychain configuration; advanced connection fields, explicit testing, cancellation, and errors. Tests send only a synthetic question, without history/documents. |
+| Permissions | Remote mode requests system audio/microphone as needed; in-person needs microphone only; typing needs neither. Authorization does not start recording. |
+| First experience | Separate model, permission, and service status; sample questions, demos, and overlay entry. Installation, key storage, and successful validation are distinct states. |
 
-新安装自动出现；已有配置或数据的用户不会被强制引导。关闭窗口保留进度，下次启动继续；“稍后设置”不再自动弹出。可从“设置 → 常规 → 新用户引导”重新打开，已完成的引导从第一页开始。
+Fresh installations open the guide automatically; existing settings/data do not force it. Closing preserves progress for the next launch. **Set up later** suppresses automatic reopening. Settings → General → First-run guide reopens it; a completed guide restarts at page one.
 
-## 实现边界
+## Implementation boundaries
 
-- 使用现有 `AppSettings`、`CredentialEditor`、模型安装器、Apple Speech 与 Laya 管理器，不另存密钥。
-- `OnboardingState` 只保存导航和选择，不代表运行能力已经验证。
-- 模型下载仅在明确操作后开始；Paraformer/BGE 串行去重，失败保留原因并继续队列，取消清空待下载任务并保留旧模型。引导关闭不取消已开始的下载。
-- 本地转写和资料向量不等于本地回答生成；界面解释所选服务的数据去向和 API 用量。
-- 连接测试结果仅在本次运行有效，更换服务、连接配置或凭据后失效。
-- 新安装默认本地转写、本地向量、独立回答服务；支持 Laya 的设备默认开启 Jev Mode 自动建议，已有用户设置保持原值。准备模型仍需用户主动确认。
+- Reuses `AppSettings`, `CredentialEditor`, model installers, Apple Speech, and Laya managers; no additional key store.
+- `OnboardingState` stores navigation/choices, not proof of runtime readiness.
+- Downloads require explicit action. Paraformer/BGE jobs are serialized/deduplicated; failures preserve reasons and allow the queue to continue. Cancellation clears pending jobs and preserves older models. Closing onboarding does not cancel an ongoing download.
+- Local transcription/vectors do not imply local answer generation. UI explains data destinations and API usage.
+- Connection-test results last only for the current run and are invalidated by provider, configuration, or credential changes.
+- New installs default to local transcription/vectors and an independent answer service. Supported devices default to Jev Mode suggestions; existing settings are preserved. Model preparation still requires explicit action.
 
-## 预览
+## Preview
 
-在仓库根目录运行：
+From the repository root:
 
 ```sh
 bash StealthApp/scripts/preview-onboarding.sh
 ```
 
-生成 `StealthApp/build/Onboarding/LiveCopilot Preview.app`，可直接再次打开。预览使用独立 bundle ID、偏好设置和数据目录，bundle 自带预览标记；无需启动参数也会使用模拟服务。引导中的模型下载、权限申请和真实 API 调用在预览中禁用。未替换正式安装。
-
-布局检查选项：
+Creates `StealthApp/build/Onboarding/LiveCopilot Preview.app`, reusable without launch arguments. A bundled preview marker selects mock services with an independent bundle ID, preferences, and data directory. Downloads, permissions, and real API calls are disabled. Production installation is not replaced.
 
 ```sh
 bash StealthApp/scripts/preview-onboarding.sh --onboarding-dark --onboarding-compact
 ```
 
-预览进度同样持久化；完成后重新打开预览会回到第一页。退出正在运行的预览后再构建，避免同时运行多个实例。
+Preview progress persists, but reopening a completed preview starts at page one. Quit the preview before rebuilding to avoid multiple instances.
 
-## 2026-09-28 验收记录
+## Acceptance — 2026-09-28
 
-- Debug 构建通过。
-- `scripts/test-core.sh`：72 项检查通过。
-- 原生 XCTest：62 项，1 项按原规则跳过，0 失败。跳过的是需要真实 Laya 安装的端到端测试。
-- 新增 9 项引导测试，覆盖首次安装与已有数据识别、恢复/跳过/完成、配置保留、下载队列/失败/取消、连接测试内容与状态失效、输入路径及预览无下载。
-- 实际窗口走查：中文六页、英文切换、示例试问、设置重新打开、稍后设置后恢复、退出后恢复、880 × 590 紧凑深色显示。服务测试成功状态能保留到最后一页。
-- 截图：`StealthApp/build/onboarding-qa/`；完整测试日志：`StealthApp/build/onboarding-final-tests.log`。
+- Debug build passed; `scripts/test-core.sh`: 72 checks passed.
+- Native XCTest: 62 tests, one existing real-Laya integration test skipped, zero failures.
+- Nine added onboarding tests cover fresh/existing data detection, resume/skip/finish, setting preservation, download queue/failure/cancellation, test-request content and invalidation, typing mode, and no preview downloads.
+- Actual window checks covered all six Chinese pages, English switching, sample questions, reopening from Settings, resuming after defer/exit, and 880 × 590 compact dark appearance. A successful service test remained visible on the final page.
+- Screenshots: `StealthApp/build/onboarding-qa/`; complete log: `StealthApp/build/onboarding-final-tests.log`.
 
-尚未验证：新模型的真实网络下载、真实麦克风/系统音频授权及采集、付费服务请求。这些不属于模拟预览的验收结果。发布前应在独立测试配置中完成上述端到端检查。
+Not validated here: real model downloads, physical microphone/system-audio authorization/capture, or paid service requests. Isolated end-to-end checks are required before release; mock preview acceptance does not establish those outcomes.

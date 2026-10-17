@@ -10,7 +10,7 @@ The latest exact results are maintained in `IMPLEMENTATION_PLAN.md`. Distinguish
 
 ### 2026-09-16 — installed 1.3.0 capture and GUI acceptance
 
-The last stale ScreenCapture requirement was traced to the Debug app's code hash, not the installed binary. Debug now has a distinct bundle ID. 19 native tests and 3 installer tests passed; same-ID development artifacts were unregistered and the unchanged installed app re-registered. After authorization, local browser synthetic Chinese audio appeared as Them through Apple speech, and microphone speech appeared as You. Stop/restart succeeded without another recording prompt. Long-content screenshots preserved header, footer and rounded corners. Apple service and DeepSeek price/key-status UI were inspected. Installed build/hash remain unchanged. See [detailed evidence and limits](V1_3_0_UPDATE.md#2026-09-16权限根因补充与实机验收完成).
+The last stale ScreenCapture requirement was traced to the Debug app's code hash, not the installed binary. Debug now has a distinct bundle ID. 19 native tests and 3 installer tests passed; same-ID development artifacts were unregistered and the unchanged installed app re-registered. After authorization, local browser synthetic Chinese audio appeared as Them through Apple speech, and microphone speech appeared as You. Stop/restart succeeded without another recording prompt. Long-content screenshots preserved header, footer and rounded corners. Apple service and DeepSeek price/key-status UI were inspected. Installed build/hash remain unchanged. See [detailed evidence and limits](V1_3_0_UPDATE.md#2026-09-16-permission-root-cause-and-installed-acceptance).
 
 ### 2026-09-15 — Apple speech, overlay bounds and local updater (1.3.0)
 
@@ -21,7 +21,7 @@ The last stale ScreenCapture requirement was traced to the Debug app's code hash
 - Universal Release build passed; **18 native XCTest cases, zero failures**, final run at 23:42:45 local time. The native suite includes the **55 deterministic core checks** plus replacement-preview isolation: partial text grows the overlay's content state without entering conversation history.
 - Pinned Paraformer INT8 encoder/decoder/tokens and Silero weights passed SHA-256 installation verification. The 238 MB model pack is installed outside the repository/app. No Python dependency was added to the application.
 - Real local synthetic speech, paced at real time: English and Chinese produced **6 and 10 distinct previews**, respectively, with the first preview by 1,000 ms of supplied audio (including 500 ms of leading silence). This tiny fixture is not a general latency benchmark. Each completed question delegated once; `You` produced zero delegations.
-- **Accuracy limitation:** the Chinese fixture retained “延迟” but rendered method B as “方法比”; English rendered “latency” as “lency.” The upstream C API example also misrecognized the English term. These are recorded model limitations, not passing accuracy claims. Integration assertions cover streaming/finalization/trigger behavior; keyword fidelity is recorded separately. SenseVoice regression retained correct latency keywords in both languages.
+- **Accuracy limitation:** the Chinese fixture retained the Chinese word for “latency” but rendered method B as a Chinese homophone of “method B”; English rendered “latency” as “lency.” The upstream C API example also misrecognized the English term. These are recorded model limitations, not passing accuracy claims. Integration assertions cover streaming/finalization/trigger behavior; keyword fidelity is recorded separately. SenseVoice regression retained correct latency keywords in both languages.
 - Stop initially lost the final token with 300 ms of model padding. Finalization now provides a full model chunk plus lookahead as generated silence (no extra recording or wall-clock wait), then drains final short input. Same-audio stop and normal-endpoint results match; repeated flush produces no duplicate transcript.
 - Installed **1.2.2 / 20260914.154440 (UTC build ID)** at `~/Applications/LiveCopilot.app`; strict recursive codesign verification passed. Main executable SHA-256: `b688052f12543e421875b1efb9b91c5bb3eb84490dab308f499fc0fbb92941aa`. Previous app: `LiveCopilot.app.previous.20260914154440`. Existing listening selection, embedding/reasoning settings and private knowledge were preserved.
 - The installed app's bundled native worker was separately exercised against the installed production model using synthetic audio: partial and final text passed. The app was **not relaunched**: the Mac was locked, so CUA could not inspect the final GUI. New microphone/system-capture, new Keychain authorization and real cloud answers are **not verified by this update**. No cloud API calls were made. Signing remains ad-hoc; no new GitHub release was published.
@@ -150,12 +150,12 @@ Acceptance fixed a native termination hang, focused shortcut character insertion
 
 The earlier 401 applied to the old credential and is resolved. The CLI helper's separate Keychain timeout was an OS access issue, not a failed API authentication for the installed app. Do not replace or resend the working Key merely to run that helper.
 
-### 本机首次体验（约 3–5 分钟）
+### First local experience (about 3–5 minutes)
 
-1. 打开 `~/Applications/LiveCopilot.app`，在设置 → Knowledge 导入一份自己允许发送提取文本给 OpenAI 的资料，等待 Ready。保持监听关闭，提问一个资料中的数字并展开 `[S1]` 核对。
-2. 选择 **In-Person**，点击开始并在系统提示中授予麦克风权限。说一个完整问题，检查 Room 转写和自动建议；再用 `⌥Space` 手动触发。
-3. 戴耳机切换 **Remote Meeting**，按提示授予屏幕/系统音频权限。用另一应用播放非隐私语音，检查 Them；自己说话检查 You，测试静音及在其他应用前台时的快捷键。
-4. 在实际会议软件的共享预览或另一台观看设备中检查悬浮窗排除效果。结束后停止监听。
+1. Open `~/Applications/LiveCopilot.app`. In Settings → Knowledge, import material whose extracted text you permit sending to OpenAI, then wait for Ready. With listening off, ask about a number in it and expand `[S1]` to verify.
+2. Choose **In-Person**, start listening, and grant microphone access in the system prompt. Speak a complete question; check Room text and automatic suggestions, then use the configured manual shortcut (historically `⌥Space`).
+3. With headphones, switch to **Remote Meeting** and grant screen/system-audio permission. Play non-private speech in another app and check Them; speak yourself and check You. Test silence and shortcuts with another app foregrounded.
+4. Check overlay exclusion in the actual meeting app's shared preview or another viewing device. Stop listening afterward.
 
 Physical audio and permission behavior, real network interruption, background global keypresses, full visual/resize checks and actual meeting-app sharing exclusion remain **manual checks, not passed automated evidence**. The longer checklist above covers these cases and expected behavior. This boundary follows the supplied requirement to prepare an interactive path for audio behaviors requiring user participation.
 

@@ -1,78 +1,73 @@
-# 新用户引导 · 第二批
+# First-run onboarding — phase 2
 
-状态：2026-09-29 本地实现与预览验收完成，尚未发布。延续第一批六步引导，完成原方案中的动画演示、场景化推荐与首次使用提示。
+Historical status: local implementation and preview acceptance completed on 2026-09-29, not yet published. Extends the six-step guide with animation, scenario recommendations, and first-use tips.
 
-## 动画演示
+## Animated demonstration
 
-- 功能介绍页演示“听到问题 → 判断完整问题 → 结合上下文或资料 → 回答建议”四个阶段，单次播放，支持暂停、继续和重播。
-- 面试、会议、学术答辩各有对应的合成问题、资料提示及回答；切换场景会更新演示，并复用已有 `ScenarioProfile` 调整实际回答风格。
-- 所有演示内容独立于录音、资料和服务请求；离开页面取消演示任务。
-- 开启系统“减少动态效果”时直接展示完整静态内容。原生按钮保留键盘与辅助功能访问，未播放的内容不会被辅助功能提前读取。
+- A single-play sequence shows hearing a question → identifying a complete question → consulting context/material → suggesting an answer. Supports pause, resume, and replay.
+- Interview, meeting, and academic-defense examples have distinct synthetic questions, material, and answers. Switching scenario updates the demo and reuses `ScenarioProfile` for the actual answer style.
+- Demonstrations are independent of recording, documents, and service requests; leaving the page cancels their task.
+- Reduce Motion displays the full static content. Native buttons retain keyboard/accessibility support; unrevealed content is not exposed early to accessibility.
 
-## 场景化推荐
+## Scenario recommendations
 
-模型页先解释推荐理由与具体改动，再提供“应用推荐配置”。浏览或切换场景不会自动应用模型推荐。
+The model page explains the rationale and proposed changes before **Apply recommended configuration**. Browsing scenarios does not apply recommendations.
 
-| 场景 | 推荐准备 |
+| Scenario | Preparation |
 | --- | --- |
-| 面试 | 本地识别、Jev Mode 自动建议；准备本地资料检索，用于简历和项目材料。 |
-| 会议 | 本地识别、Jev Mode 自动建议；暂不准备资料检索，可按需添加，使用总结工具回顾对话。 |
-| 学术答辩 | 本地识别、Jev Mode 自动建议；准备本地资料检索，用于论文与方法笔记。 |
+| Interview | Local recognition and Jev Mode; prepare retrieval for resumes/project material. |
+| Meeting | Local recognition and Jev Mode; retrieval optional, recap for reviewing discussion. |
+| Academic defense | Local recognition and Jev Mode; prepare retrieval for papers/method notes. |
 
-已安装且当前语言可用的 Apple 识别资源优先复用，否则推荐 Paraformer。支持 Laya 的设备推荐开启 Jev Mode，不支持时使用手动触发回答。仅输入问题时不更改语音选择或 Jev Mode，不新增语音下载。推荐保留回答服务、模型、地址、密钥、界面语言、远程/现场方式和窗口偏好；不会开始下载或录音。当前正在监听、索引或准备模型时不可应用。
+At this checkpoint, installed Apple assets for the selected language were reused first; otherwise Paraformer was recommended. Later releases recommend Zipformer for mixed Chinese/English. Supported devices recommend Jev Mode; others use manual answers. Typing-only does not alter speech/Jev Mode or add speech downloads. Recommendations preserve answer provider/model/endpoint/key, interface language, remote/in-person mode, and window preferences. They start neither downloads nor recording and cannot apply while listening, indexing, or preparing models.
 
-“用自己的资料辅助回答”仍是引导中的准备意向，不删除或停用已有知识库。用户可继续逐项调整，下载由现有明确操作触发。
+Using personal materials remains an onboarding preparation preference; it does not delete or disable an existing knowledge library. Users can adjust individual settings; downloads use the existing explicit action.
 
-## 悬浮窗首次使用提示
+## Overlay first-use tips
 
-- 新安装首次进入悬浮窗时显示四条提示：开始监听／输入提问、手动生成回答、显示隐藏窗口、截图与共享排除。
-- 提示贴近并标记对应控件，读取当前保存的快捷键；实际按钮仍可操作。提示按钮本身不开始监听或发起回答请求。
-- 进度独立保存，可以跳过。引导窗口打开时暂停显示，关闭后恢复；完成后不会因重开引导再次弹出。
-- 旧用户（包括已完成第一批引导的用户）默认不自动弹出。可从“设置 → 通用 → 悬浮窗操作提示”或引导最后一页主动重看。
-- 阅读期间暂停自动收回；用户手动隐藏后仍可从屏幕边缘唤回。引导主窗口打开时不让悬浮窗因边缘悬停而抢先出现。用户的固定/贴边隐藏偏好保持不变。
+- Fresh installations show four tips: listen/type, generate an answer, show/hide the overlay, and capture/sharing exclusion.
+- Tips highlight corresponding controls and read saved shortcuts. Controls remain usable; tip buttons do not start listening or answer requests.
+- Progress is independent and skippable. Tips pause while onboarding is open and resume afterward; completing the guide again does not repeat completed tips.
+- Existing users, including phase-1 users, are not interrupted. They can replay tips from Settings → General → Overlay tips or onboarding's final page.
+- Auto-hide pauses during tips. A manually hidden panel remains recoverable from the screen edge. Onboarding suppresses edge-hover overlay activation; pin/edge preferences remain intact.
 
-## 验收
+## Acceptance
 
-- Debug 构建、预览签名检查、脚本语法与 `git diff --check` 通过。
-- 原生 XCTest：67 项，1 项原有真实 Laya 端到端测试跳过，0 失败。其中引导专项 14 项，本批新增 5 项。
-- 新测试覆盖：提示持久化/暂停/完成/重看、旧引导兼容与升级不打扰、推荐仅修改所列设置、推荐不启动下载和监听、引导与提示期间的边缘显隐行为。
-- 实际窗口走查：中文动画完整播放、重播及暂停；会议推荐显式应用；英文答辩和输入模式推荐；设置与首次体验页重看提示；提示完成后收回；深色与紧凑布局。
-- 当时最小窗口：引导内容 880 × 590 pt、悬浮窗宽度 400 pt，英文文案可用。引导的右栏滚动布局已由下方“一屏布局补充”替代。
-- 测试日志：`StealthApp/build/onboarding-phase2-tests.log`；截图：`StealthApp/build/onboarding-phase2-qa/`。
+- Debug build, preview signature, script syntax, and `git diff --check` passed.
+- Native XCTest: 67 tests, one existing real-Laya integration test skipped, zero failures. Fourteen onboarding tests, including five new ones.
+- Added coverage: tip persistence/pause/completion/replay, old-guide compatibility and unobtrusive upgrades, recommendation scope, no implicit download/listening, and guide/tip edge visibility.
+- Actual UI checks: Chinese animation/replay/pause, explicit meeting recommendation, English defense/typing recommendations, replay from Settings/final page, collapse after tip completion, dark/compact layouts.
+- The then-minimum sizes were 880 × 590 pt for onboarding and 400 pt overlay width; English text fit. The right-column scrolling layout was later superseded below.
+- Log: `StealthApp/build/onboarding-phase2-tests.log`; screenshots: `StealthApp/build/onboarding-phase2-qa/`.
 
-本批使用隔离预览完成界面验收，未执行真实音频采集、付费 API 调用或新模型的大文件下载，未替换正式安装。
+Isolated preview checks did not capture real audio, call paid APIs, download large models, or replace production.
 
-## 视觉与转场补充（2026-09-29）
+## Visual transitions — 2026-09-29
 
-- 淡粉、淡蓝光晕随六个步骤改变位置，以 1.2 秒平滑过渡；深色外观使用更低亮度。背景延伸至透明标题栏，隐藏标题与分隔线，保留系统窗口控件。
-- 内容翻页使用 0.38 秒滑动与淡入淡出，返回时方向相反。品牌区和底部导航保持固定，退出中的页面不接收点击或辅助功能访问。
-- 左下角步骤条放大至 206 pt 总宽、7 pt 高，当前段为 46 pt，其余为 26 pt；段宽、颜色与步骤数字一起过渡。
-- “稍后设置”位于“继续”左侧，采用无边框文字操作，悬浮时变为强调色并显示下划线，按下时降低不透明度。模型页的“稍后下载”复用同一风格。
-- 系统“减少动态效果”关闭页面、背景与进度条动画。预览支持 `--onboarding-slow-motion`，以五分之一速度检查中间帧，不影响正常启动。
-- 本次引导专项 14 项测试通过；最终 Debug 构建、签名和差异格式检查通过。实际窗口确认标题栏背景连贯、前进/返回动画中间帧、英文深色紧凑布局和减少动态效果路径。悬浮事件未由自动化工具复现，颜色及下划线反馈已在视图中实现。
-- 本次截图保存在 `StealthApp/build/onboarding-motion-qa/`，测试日志为 `StealthApp/build/onboarding-motion-tests.log`。
+- Pink/blue glows move between six steps with 1.2-second transitions and reduced brightness in dark mode. Background extends through the transparent title bar; title/separator are hidden, native window controls retained.
+- Pages slide/fade for 0.38 seconds, reversing direction on back navigation. Brand/footer remain fixed; outgoing pages ignore clicks and accessibility.
+- Bottom-left progress totals 206 pt wide × 7 pt tall: current segment 46 pt, others 26 pt. Width/color/step number animate together.
+- **Set up later** sits left of Continue as borderless text, accent-colored and underlined on hover, dimmer when pressed. **Download later** shares the style.
+- Reduce Motion disables page/background/progress animation. Preview-only `--onboarding-slow-motion` runs at one-fifth speed for intermediate-frame checks.
+- All 14 onboarding tests, final Debug build, signing, and diff checks passed. Actual UI confirmed continuous title-bar background, forward/back intermediate frames, compact English dark appearance, and Reduce Motion. Automation did not reproduce hover events; hover color/underline were implemented in the view.
+- Screenshots: `StealthApp/build/onboarding-motion-qa/`; log: `StealthApp/build/onboarding-motion-tests.log`.
 
-## 一屏布局补充（2026-09-29）
+## Single-screen layout — 2026-09-29
 
-- 移除六步引导的右侧滚动容器，默认及最小窗口为 1040 × 700 pt，并以屏幕可用范围限制初始大小。顶部沉浸背景、翻页动效和固定底部导航保留。
-- 使用场景移至介绍页左栏，右侧完整展示示例卡片，包括回答、重播和说明。
-- 模型推荐移至左栏；右栏依次展示语音配置、并排的资料检索与 Jev Mode、下载空间说明。云端密钥通过独立弹出层配置，避免重复堆叠编辑器。
-- 回答服务的高级连接字段改为弹出层；权限页收紧卡片间距，远程会议的麦克风与系统音频权限同时可见。
-- 首次体验改为“准备情况 / 体验示例 / 试问一句”三个分区，共享同一展示区域。分区切换保留试问内容；离开试问时取消正在进行的请求。较长回答按可用区域分页，保留所有字符，不产生纵向滚动。
-- Debug 构建和预览签名通过，引导专项 16 项测试通过。新增测试检查中英文与 emoji 长文本分页的完整性、测量高度、无空格文本以及尺寸变化。
-- 最小窗口实际检查中文示例、英文 Apple 识别与 Jev Mode、双音频权限、五项准备状态、示例和试问分区；深色与减少动态效果路径、试问分区内容保留也已检查。预览未调用真实 API、申请权限或下载模型。
-- 测试日志：`StealthApp/build/onboarding-no-scroll-tests.log`；截图：`StealthApp/build/onboarding-no-scroll-qa/`。
+- Removed the right scrolling container. Default/minimum window is 1040 × 700 pt, initially constrained by available screen space. Immersive background, transitions, and fixed navigation remain.
+- Scenario selection moved to the introduction's left column; the right column shows the full example, answer, replay, and explanation.
+- Recommendations moved left. The right column contains speech, side-by-side retrieval/Jev Mode, and download/storage information. Cloud credentials use a separate popover instead of stacked editors.
+- Advanced answer connection fields use a popover. Permission cards are tighter so remote microphone and system-audio permissions appear together.
+- First experience uses Readiness / Examples / Try a question tabs in a shared region. Switching preserves question content; leaving Try cancels its request. Long answers paginate within available space without losing characters or vertical scrolling.
+- Debug build/preview signature and 16 onboarding tests passed. New tests cover complete Chinese/English/emoji pagination, measured height, unspaced text, and resizing.
+- Minimum-window checks covered Chinese examples, English Apple/Jev Mode, dual audio permissions, five readiness states, example/question tabs, dark/Reduce Motion, and retained question content. Preview made no real requests, permission prompts, or downloads.
+- Log: `StealthApp/build/onboarding-no-scroll-tests.log`; screenshots: `StealthApp/build/onboarding-no-scroll-qa/`.
 
-## 复现预览
+## Reproduce
 
 ```sh
 bash StealthApp/scripts/preview-onboarding.sh
-```
-
-深色、紧凑和减少动态效果路径（仅作用于隔离预览，不更改系统设置）：
-
-```sh
 bash StealthApp/scripts/preview-onboarding.sh --onboarding-dark --onboarding-compact --onboarding-reduce-motion
 ```
 
-构建前退出正在运行的预览。产物仍为 `StealthApp/build/Onboarding/LiveCopilot Preview.app`。
+Flags affect only the isolated preview, not system settings. Quit the running preview before rebuilding. Output remains `StealthApp/build/Onboarding/LiveCopilot Preview.app`.

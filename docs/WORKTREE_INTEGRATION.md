@@ -1,49 +1,49 @@
-# 引导与模型配置整合（2026-09-29）
+# Onboarding and model-configuration integration — 2026-09-29
 
-## 差异来源
+## Source of the differences
 
-核对会话“配置 LiveCopilot OSS 模型分发”及其 `de53` 工作区后，发现它和当前 `1cee` 引导工作区的已提交基线都是 `ada250f`。默认模型等修改留在 `de53` 的 8 个未提交文件中，因此此前从 `1cee` 打包时没有带上。主工作区的 `5aa6234` 已包含在共同基线中，没有另一个待合并的提交分支。
+The model-distribution task's `de53` worktree and onboarding worktree `1cee` shared committed baseline `ada250f`. Default-model changes remained in eight uncommitted files in `de53`, so earlier `1cee` packages omitted them. Main-worktree commit `5aa6234` was already in the common baseline; there was no separate unmerged commit branch.
 
-已将这 8 个文件的差异合入当前 `codex/onboarding-first-run` 分支，保留本工作区的引导实现。源工作区及其未提交文件保持原样；未执行推送或发布。
+Imported those eight file diffs into `codex/onboarding-first-run`, preserving onboarding. Source worktree/uncommitted files were untouched; no push/publication.
 
-| 核对项 | 结果 |
+| Item | Outcome |
 | --- | --- |
-| OSS 优先、备用源、逐文件校验与下载进度 | 已在共同基线中，本次保留。 |
-| OpenAI 语言偏好及“不发送语言提示”请求逻辑 | 已在共同基线中；此前引导缺少入口，本次复用设置中的四项选择。 |
-| OpenAI 官方标志 | 共同基线已有资源；本次在试问区域复用。 |
-| Flash 默认模型、GLM 思考选项约束 | 源工作区未提交；已导入，并在实际请求层补齐 GLM Flash 兼容校验。 |
-| 服务说明、价格示例与相关核心检查 | 随源工作区差异导入；OpenAI 按本次要求改为 GPT-6 Sol。 |
+| Preferred distribution source, fallback, hashes, progress | Already in common baseline; retained. |
+| OpenAI language preference and no-language-hint request | Already in baseline; added missing onboarding access using the same four settings choices. |
+| Official OpenAI logo | Existing asset reused in sample-question area. |
+| Flash defaults / GLM thinking constraints | Imported uncommitted changes; added GLM Flash compatibility at the request layer. |
+| Service guidance, pricing examples, core checks | Imported; OpenAI changed to GPT-6 Sol as requested at the time. |
 
-## 当前默认值
+## Defaults at this checkpoint
 
-| 服务 | 新配置默认模型 |
+| Service | New-configuration model |
 | --- | --- |
-| OpenAI | `gpt-6-sol`，低推理强度 |
-| DeepSeek | `deepseek-flash`，低推理强度 |
-| Qwen | `qwen3.8-flash`，关闭思考 |
-| GLM | `glm-5.3-flash`，模型默认思考 |
-| Kimi | `kimi-k2.6`，关闭思考 |
+| OpenAI | `gpt-6-sol`, low reasoning |
+| DeepSeek | `deepseek-flash`, low reasoning |
+| Qwen | `qwen3.8-flash`, thinking off |
+| GLM | `glm-5.3-flash`, model-default thinking |
+| Kimi | `kimi-k2.6`, thinking off |
 
-普通升级保留已保存的自定义模型、端点及凭据。GLM Flash 不展示“关闭思考”，请求层也不会发送旧设置中的无效关闭参数。
+Normal upgrades retain saved models/endpoints/credentials. GLM Flash hides thinking-off and suppresses invalid legacy off parameters in requests.
 
-语言能力按识别服务呈现：OpenAI 提供中文优先、英文优先、中英混合、不限语言（不作引导）；Paraformer 自动识别中英混合；Apple 本机识别仍需显式选择普通话或英语，不宣称支持自动语言切换。
+OpenAI offers Chinese-first, English-first, mixed Chinese/English, and unrestricted recognition (no language guidance). Paraformer recognizes mixed Chinese/English; Apple requires explicit Mandarin/English selection, without claiming automatic switching.
 
-## 界面变更
+## UI changes
 
-- 引导和设置中的布尔选项统一使用字段右侧的药丸拨杆；悬浮窗复用已有拨杆样式。
-- Jev Mode 复用设置中的品牌字体，继续标为推荐配置。
-- 试问区域显示所选服务商的标志、名称和模型；自定义兼容端点使用通用图标。标志来源见 [PROVIDER_LOGOS.md](PROVIDER_LOGOS.md)。
-- 悬浮窗提示新增第 4 步“截图与共享排除”，显示当前状态并提供设置入口；不自动更改该隐私选项。提示说明实际排除效果取决于 macOS 和采集软件。
-- 保留 1040 × 700 pt 一屏布局、沉浸标题栏、淡粉蓝背景和步骤动画。
+- Onboarding/Settings booleans use right-aligned pill switches; overlay retains its existing switch style.
+- Jev Mode reuses the branded Settings font and remains recommended.
+- Try-a-question shows provider logo/name/model; custom endpoints use a generic icon. See [logo provenance](PROVIDER_LOGOS.md).
+- Added fourth overlay tip for screenshot/sharing exclusion, showing current state and a Settings link without changing the privacy choice. Actual behavior depends on macOS/capture software.
+- Retained 1040 × 700 single-screen layout, immersive title bar, pink/blue background, and transitions.
 
-## 验证
+## Validation
 
-- 核心检查：73 项通过，无真实 API 请求。
-- 原生 XCTest：72 项，1 项显式选择才运行的真实 Laya 测试跳过，0 失败；其中引导专项 19 项。
-- 实际隔离预览检查：紧凑窗口无滚动、模型页拨杆与品牌字体、四项语言菜单、DeepSeek 标志与模型、四条悬浮窗提示，以及最后一步进入通用设置。
-- Release 构建成功；签名验证覆盖 5 个 universal Mach-O、Developer ID、时间戳和 hardened runtime。
-- 已覆盖安装本地正式版 2.0.0（`20260929.071457`），实际核对中文模型页的拨杆与字体，以及试问页的 DeepSeek 标志和 `deepseek-flash`。窗口无上下滚动和内容遮挡。
-- 本机旧出厂模型值按本次要求更新为新预设，其余设置、凭据与系统权限保留；修改前已备份偏好，安装器也已备份旧 App。模型、Laya 环境和知识库文件的大小及修改时间与安装前一致。
-- 未通过真实音频或付费请求验证各服务商新模型的响应质量。
+- Seventy-three core checks passed without real API requests.
+- Seventy-two native tests: one opt-in real-Laya test skipped, zero failures; 19 onboarding tests.
+- Isolated preview checked compact no-scroll layout, switches/branding, four language options, DeepSeek logo/model, four overlay tips, and final-step General entry.
+- Release built; five universal Mach-O components passed Developer ID/timestamp/hardened-runtime verification.
+- Replaced local production 2.0.0 (`20260929.071457`); actual Chinese model-page switches/branding and sample-page DeepSeek/`deepseek-flash` were visible without vertical scrolling or obstruction.
+- Per user request, local old factory defaults were updated; other preferences, credentials, and permissions remained. Preferences and old app were backed up. Model/Laya/knowledge file sizes and modification times were unchanged.
+- New provider models were not evaluated with real audio or paid requests.
 
-构建与测试日志保存在本地忽略目录 `StealthApp/build/onboarding-merged-*.log`；源工作区差异备份为 `StealthApp/build/oss-worktree-changes.patch`。
+Logs: ignored `StealthApp/build/onboarding-merged-*.log`; source diff backup: `StealthApp/build/oss-worktree-changes.patch`.

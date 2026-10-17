@@ -1,54 +1,47 @@
-# V1.1 — 语言、底色与分析服务
+# V1.1 — language, appearance, and analysis services
 
-用户在 V1 体验后明确要求增加中文、可选白底、独立服务配置与可替换的分析供应商。本次范围以该新要求为准；原始 V1 需求文档保留不改。
+After trying V1, the user requested Chinese UI, an optional white background, independent service configuration, and replaceable analysis providers. This update follows that scope; the original V1 requirements remain unchanged.
 
-## 使用方式
+## Usage
 
-1. 打开设置 → **通用**，选择跟随系统、English 或简体中文。界面即时刷新；用户文档、原始转写和回答内容不做字典替换，回答仍跟随提问语言。
-2. 在同页选择 **半透明毛玻璃** 或 **纯白底色**。纯白模式使用深色文字和浅色原生控件；应用的捕获排除行为独立于底色。
-3. 设置 → **服务 → 实时服务** 管理 OpenAI Key、Live 模型及向量模型。已配置时显示状态和固定掩码，点击“更换密钥”才显示空的安全输入框。不会将真实 Key 回填界面。
-4. **服务 → 分析服务** 选择：沿用实时服务的 OpenAI、独立 OpenAI Key、DeepSeek、OpenAI 兼容服务。默认沿用现有 OpenAI 配置，不改变用户已有模型和知识库。
-5. DeepSeek 使用独立密钥和可编辑模型，默认 `deepseek-v4-pro`、低推理强度。兼容服务填写 HTTPS 基础地址、Chat Completions 路径和模型；先保存连接，再配置密钥。改变地址后需为新地址单独配置凭据。
+1. Settings → General offers System, English, and Simplified Chinese, applied immediately. Documents, transcripts, and answers are not dictionary-translated; answers follow the question's language.
+2. Choose translucent glass or solid white. White uses dark text/light native controls; capture exclusion is independent.
+3. Services → Realtime service manages the OpenAI key, Live model, and embedding model. Configured credentials show status and a fixed mask. **Replace key** opens an empty secure field; the actual key is never filled back in.
+4. Analysis service offers shared realtime OpenAI, independent OpenAI, DeepSeek, or compatible Chat Completions. The default reuses existing OpenAI configuration without changing models/knowledge.
+5. DeepSeek has an independent key and editable model, initially `deepseek-v4-pro` with low reasoning. Compatible services require an HTTPS base URL, Chat Completions path, and model. Save the connection before configuring credentials; a new endpoint needs its own key.
 
-实时音频和知识库 Embeddings 仍使用 OpenAI。分析服务只接收问题、相关对话和本地检索出的证据；独立分析密钥不会替代实时密钥，也不会把 OpenAI Key 自动发送给其他服务。仅更换分析模型无需重建索引。
+At this release, realtime audio and embeddings still used OpenAI. Analysis receives questions, relevant conversation, and locally retrieved evidence. Independent analysis keys neither replace realtime keys nor send OpenAI credentials to another service. Changing only the analysis model needs no index rebuild.
 
-## 截图消失的原因
+## Capture exclusion
 
-悬浮窗、设置和历史窗口都保留了原生 `NSWindow.sharingType = .none`，向 macOS 请求从捕获画面中排除。这是窗口属性，不是额外搭建的独立图层。它会影响某些截图和录屏工具，但不是对所有 macOS／会议软件的保证。实际共享预览仍应单独核对。
+The overlay, Settings, and History retained `NSWindow.sharingType = .none`, requesting capture exclusion through a window property rather than an extra layer. Behavior varied across macOS/capture applications; shared previews still needed checking.
 
-开发预览仅在同时指定 `--mock --ui-preview` 时允许捕获，使用隔离的模拟数据与设置、不读取生产凭据。普通启动及单独的 `--ui-preview` 均保持生产捕获策略。
+Only combined `--mock --ui-preview` allowed development capture, using isolated mock data/settings without production credentials. Normal launch or `--ui-preview` alone kept production policy.
 
-## 实现与验证
+## Implementation and validation
 
-- 旧设置按字段迁移，新字段才使用默认值；原模型、模式、场景、自动建议及检索设置得到保留。
-- 43 项确定性核心检查通过，包括旧设置迁移、语言与来源标签、HTTPS 地址验证、按地址区分密钥、四种分析路由与凭据隔离，以及异常流处理。
-- 12 个原生 XCTest 用例通过。新增实际 URLSession/URLProtocol 的 Chat Completions 字节流检查、取消后关闭底层流，以及独立凭据删除不影响实时凭据的隔离测试。用例不调用真实模型，不接触用户 Key。
-- DeepSeek／兼容接口只显示最终 `delta.content`，不显示 `reasoning_content`。流式截断、空答案、服务错误和取消均有处理；不回显服务端原始错误正文。
-- 隔离 Mock 界面核对通过：中文与英文即时切换、中文窗口与悬浮窗、纯白底色、实时／分析服务分层、DeepSeek 选项、兼容地址与模型保存，以及关闭监听时的完整中文问题和流式来源展示。正式捕获排除设置未被关闭。原生 GroupBox 曾触发自动化工具自身崩溃，改用明确的 SwiftUI 内容分组后界面检查恢复。
-- 原生 Release 编译通过。DeepSeek 和自定义服务尚未用真实凭据联调，需用户在本机配置自己的对应 Key 后使用。
+- Field-by-field migration preserved existing models, modes, scenarios, automatic suggestions, and retrieval settings; only new fields received defaults.
+- All 43 deterministic checks passed, covering migration, language/source labels, HTTPS validation, endpoint-scoped keys, four analysis routes, credential isolation, and abnormal streams.
+- All 12 native tests passed, including real URLSession/URLProtocol Chat Completions byte streams, underlying stream closure on cancellation, and independent-key deletion isolation. No real models or user keys were used.
+- DeepSeek/compatible streaming displays only `delta.content`, not `reasoning_content`. Truncation, empty output, errors, and cancellation are handled without exposing raw server error bodies.
+- Isolated Mock UI checks covered immediate language switching, Chinese windows/overlay, white background, separate service sections, DeepSeek, saved endpoint/model, and complete typed questions with streamed sources while listening was off. Production capture exclusion stayed enabled. Replacing native GroupBox with explicit SwiftUI groups resolved an automation-tool crash.
+- Native Release compiled. DeepSeek/custom endpoints still needed validation with users' own credentials.
 
-## 官方接口依据
+## Official references checked on 2026-09-14
 
-核对日期：2026-09-14。
+- [OpenAI Responses streaming](https://developers.openai.com/api/docs/guides/streaming-responses): retained the accepted adapter.
+- [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/): streaming `choices[].delta.content`, `finish_reason`, and `[DONE]`; DeepSeek reasoning fields go only to DeepSeek.
+- [DeepSeek model/pricing reference](https://api-docs.deepseek.com/quick_start/pricing/): historical default `deepseek-v4-pro`, editable by the user.
 
-- [OpenAI Responses 流式接口](https://developers.openai.com/api/docs/guides/streaming-responses)：沿用已经验收的 OpenAI Responses 适配器。
-- [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)：支持流式 `choices[].delta.content`、`finish_reason` 和 `[DONE]`；DeepSeek 推理参数只发给 DeepSeek。
-- [DeepSeek 模型与接口信息](https://api-docs.deepseek.com/quick_start/pricing/)：当前默认模型选用 `deepseek-v4-pro`，模型名称可编辑。
+## Local checks
 
-## 本机核对
+Switch languages across Settings, overlay, menus, and History; verify persistence after restart. Check white/glass over a dark wallpaper. Realtime credentials should show configured after loading; replacement begins empty and cancellation preserves the key. Shared OpenAI needs no duplicate entry; DeepSeek/new endpoints need their own credentials. With listening off, submit a sourced question and verify streaming after changing analysis providers.
 
-- 切换中英文，查看设置、悬浮窗、菜单与历史；重新启动后应保持选择。
-- 在深色壁纸下切换毛玻璃与白底；白底应无壁纸透色，正文使用深色文字。
-- 实时服务应在密钥读取完成后显示“API Key 已配置”；更换输入框初始为空，取消不会覆盖原 Key。
-- 分析服务沿用 OpenAI 时无需再次填 Key。切换到 DeepSeek 或新兼容地址后必须使用该服务自己的密钥。
-- 关闭监听，输入一条带来源的问题验证流式回答；更换分析服务后仍可独立请求。
+## Local installation record
 
-## 本机安装记录
-
-- 版本：**1.1.0 / 20260914.093932**。
-- 路径：`~/Applications/LiveCopilot.app`；旧版本由安装脚本备份。
-- 已正常启动，通用页确认仍保留原来的远程会议／面试与模型设置；界面跟随系统显示中文，当前底色已选择纯白。
-- 安装包严格签名验证通过；可执行文件 SHA-256：`be701433349e126040b4f88e61eb8b2f0666dc7780223f4b8b4e34c9bdc4de01`。
-- 最终原生测试于 2026-09-14 09:38:46 完成：12 个 XCTest 用例、0 失败，内含 43 项核心检查。
-- 新的本地 ad-hoc 签名触发了一次 macOS Keychain 认证，随后于 09:41:09 成功读取现有凭据。正式版界面已核对显示“API Key 已配置”和固定掩码；“更换密钥”打开空白安全输入框、保存按钮禁用，点击取消后仍保持已配置。原 Keychain 项未修改，无需再输入 Key。
-- 本次没有额外真实模型调用；DeepSeek／兼容接口的验收范围是请求编码、凭据路由、流式解析、错误／取消和原生 UI，不是实际供应商连通性。
+- Version **1.1.0 / 20260914.093932**, at `~/Applications/LiveCopilot.app`; installer backed up the previous version.
+- Startup preserved remote-meeting/interview/model settings. System language displayed Chinese; solid white was selected.
+- Strict signature verification passed. Executable SHA-256: `be701433349e126040b4f88e61eb8b2f0666dc7780223f4b8b4e34c9bdc4de01`.
+- Final tests completed 2026-09-14 09:38:46: 12 native tests, zero failures, including 43 core checks.
+- Changed ad-hoc signing prompted one Keychain authorization; existing credentials loaded at 09:41:09. UI showed configured/masked credentials. Replacement opened an empty secure field with Save disabled; cancellation preserved the configured state. The original Keychain item was unchanged.
+- No additional real model requests. Acceptance covered encoding, routing, parsing, errors/cancellation, and UI, not live provider connectivity.

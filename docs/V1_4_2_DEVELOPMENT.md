@@ -1,32 +1,32 @@
-# 1.4.2 本地开发版
+# 1.4.2 local development build
 
-本轮只在本机开发和验证，不提交 Apple 公证、不打包公开 Release、不推送 GitHub 或更新线上网站。当前公开版本仍为 1.4.1。
+This checkpoint was developed/validated locally, without Apple notarization, a public Release, GitHub push, or website deployment. Public version remained 1.4.1.
 
-## 界面与交互
+## UI and interaction
 
-- 移除转写区显示／隐藏气泡按钮。有转写时直接显示，空白时保持紧凑。
-- “回答建议”统一改为“生成回答”，包括悬浮窗、快捷键页与菜单栏；英文为 Generate answer。
-- 通用设置增加“总结”和“追问”独立开关及功能说明，默认开启。关闭时隐藏按钮并注销对应全局快捷键，重新开启时恢复原快捷键。如果正在执行被关闭的工具，会取消该次生成。
-- 默认生成回答为 `⌃⌥Space`，总结为 `⌃⌥S`，追问为 `⌃⌥X`，显示／隐藏仍为 `⌥H`。已有自定义组合保留；单项重置使用新默认。空白提示和按钮提示读取实际快捷键，不再写死。
-- 知识库以大号蓝色虚线圆角框承接导入。支持点击选择和文件拖入，提供拖入高亮、忙碌状态、格式说明。批量文件在索引前统一检查，拒绝文件夹、网页链接及不支持的格式，同一批次重复 URL 去重。
-- 标题文字使用图标 LIVE 的同款 Avenir Next Heavy Italic 系统字体，覆盖悬浮窗、设置侧栏及关于页。
+- Removed the transcript show/hide bubble; show text when present and stay compact when empty.
+- Renamed the answer action to **Generate answer** across overlay, shortcuts, and menu bar.
+- Added independent Recap/Follow-up switches and descriptions in General, initially on. Disabling hides the button, unregisters its global shortcut, and cancels that tool's active generation; reenabling restores the shortcut.
+- Defaults: `⌃⌥Space` answer, `⌃⌥S` recap, `⌃⌥X` follow-up, `⌥H` visibility. Existing custom bindings remain; per-action reset uses new defaults. Empty-state/help text reads actual bindings.
+- Knowledge import uses a large blue dashed rounded target with click/drop, hover/busy state, and format guidance. Validate the entire batch before indexing, rejecting folders, web links, and unsupported files; deduplicate URLs within a batch.
+- Brand titles use Avenir Next Heavy Italic, matching the icon's LIVE lettering, in overlay, sidebar, and About.
 
-## 本机安装与数据
+## Local installation and data
 
-- 应用：`~/Applications/LiveCopilot Dev.app`，版本 `1.4.2 Dev (20260919.002)`。
-- 应用身份：`com.livecopilot.development`；保留正式版 `com.livecopilot.app` 及原安装路径。
-- 使用现有 Developer ID 进行本地签名，不提交公证，也不生成新的公开下载。
-- 开发版偏好与会话／知识库独立；数据位于 `~/Library/Application Support/LiveCopilot/Development`。已为本机复制一份知识库快照，并将副本索引里的原文路径改为开发版位置。
-- 复用 `LiveCopilot/Models` 下载缓存，避免重复下载大模型。Mock 继续使用独立的 `LiveCopilot/Mock` 数据与偏好。
-- 首次真实使用开发版可能需要为 **LiveCopilot Dev** 授予录音／系统音频权限及钥匙串访问。已有 Key 不必重新输入，启动只做静默检查；系统认证由用户完成。
-- 开发版与正式版不要同时运行，以免占用相同的全局快捷键。
+- `~/Applications/LiveCopilot Dev.app`, `1.4.2 Dev (20260919.002)`.
+- Identity `com.livecopilot.development`; production `com.livecopilot.app` and its path remain.
+- Signed with the existing Developer ID, without notarization or a new public download.
+- Independent Dev preferences/history/knowledge under `~/Library/Application Support/LiveCopilot/Development`. A local knowledge snapshot was copied and its source paths rewritten to Dev locations.
+- Shared `LiveCopilot/Models` download cache avoids large repeat downloads. Mock keeps independent `LiveCopilot/Mock` data/preferences.
+- First real Dev use may require recording/system-audio/Keychain permission for **LiveCopilot Dev**. Existing keys need not be reentered; startup reads silently and the user handles system authorization.
+- Do not run Dev and production simultaneously because global shortcuts overlap.
 
-## 验证记录
+## Validation
 
-- Xcode Debug 原生测试：28 项通过、0 失败，包含旧设置迁移、开关独立保存、快捷键停用／恢复、自定义快捷键保留与重置、生成中关闭工具的取消行为。
-- Finder 文件数据格式测试：真实 NSItemProvider 的 URL 与 Data 表示、中文／空格文件名、多文件排序去重、不支持文件拒绝，以及 Mock 向量索引完成。
-- 本机 Mock GUI：中英文窗口布局、同款品牌字体、移除气泡、新名称、新默认快捷键、修改快捷键后的即时提示、关闭工具后隐藏按钮／禁用快捷键、点击导入完成索引、模拟转写持续显示及聚焦输入框后的总结快捷键。
-- 最终 Debug 构建和安装签名验证通过；正常模式启动显示上述 Dev 版本，正式版可执行文件哈希未变。
-- 没有调用付费模型 API，没有输出或提交密钥，也没有开始真实麦克风／系统音频采集。Finder 跨窗口的实际鼠标拖放手势未在本轮 GUI 自动化中执行；文件传输解码与索引链路已通过上述测试。
+- Twenty-eight Debug native tests passed, zero failures: migration, independent toggles, shortcut disable/restore/custom/reset, and cancellation when disabling an active tool.
+- Finder transfer tests used real NSItemProvider URL/Data representations, Chinese/space-containing filenames, sorted/deduplicated batches, unsupported-file rejection, and Mock vector indexing.
+- Mock GUI checked both languages, brand font, removed bubble, names/default shortcuts/live help, disabled tool controls/shortcuts, click-to-import indexing, continuous captions, and recap shortcut with the input focused.
+- Final Debug build and installation signature passed; normal launch showed the stated Dev version and production executable hash was unchanged.
+- No paid APIs, exposed/committed keys, or physical audio capture. Actual cross-window Finder drag gestures were not automated; transfer decoding/indexing were tested separately.
 
-后续改动继续在本地开发分支积累，用户确认进入发布阶段后再更新正式版本、执行公证并同步 GitHub 与网站。
+Further changes accumulate locally; update the public version, notarize, and synchronize GitHub/site when the user moves to release.

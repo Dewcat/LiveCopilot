@@ -2,14 +2,7 @@
 
 > Release gate: both the application and final DMG must be Accepted by Apple, with validated stapled tickets and successful Gatekeeper assessments before publication. Submission receipts accompany the GitHub Release.
 
-## 中文
-
-- 正式 Developer ID 签名：应用、原生推理程序、ONNX 与 llama 依赖采用同一开发者团队，启用 Hardened Runtime 和安全时间戳。
-- 分别公证应用及最终 DMG，将 Apple 票据附加到两者，支持离线票据检查。
-- 沿用 1.4.0 功能与数据。首次从旧临时签名迁移可能需重新允许录屏或钥匙串访问；以后保持同一团队和 bundle ID，不通过弱化验证来绕过系统授权。
-- 发布脚本增加完整二进制检查、公证与 Gatekeeper 验证，并在 DMG 附加票据后重新计算校验和。旧的自签名根证书创建脚本改为只读身份检查。
-
-## English
+## Changes
 
 - Developer ID signing for the app and all bundled inference binaries, with secure timestamps and hardened runtime enabled for both Apple Silicon and Intel.
 - Separate Apple notarization and stapled tickets for the application and final disk image.

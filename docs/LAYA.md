@@ -1,65 +1,66 @@
-# Laya 本地自动触发（Dev）
+# Local Laya automatic triggering
 
-Laya 位于语音识别与分析模型之间：ASR 输出文字 → 本地 Laya 判断是否需要回应 → 等待对方说完并停顿 → 调用当前选定的分析模型。Laya 本身不负责转写，也不生成回答。
+Laya sits between transcription and answer generation: ASR text → local response-intent classification → speech completion/pause checks → the selected analysis service. It neither transcribes audio nor writes answers.
 
-## 使用
+## Current development implementation
 
-在 **设置 → 服务 → 实时服务** 选择 Paraformer 或 Apple 本地语音识别，自动分析会使用 Laya。首次点击“下载并准备”。需要 Apple Silicon、macOS 14 或更新版本及首次下载的网络连接。下载完成后判断离线运行，不需要新的 API Key。分析模型继续使用服务页的配置，其 API 费用照常计费。
+The accepted response checkpoint uses a 1,024-token context budget and a default threshold of 0.80. Semantic decisions belong to Laya; deterministic pause handling, deduplication, cancellation, and scheduling remain outside the classifier. The locally installed app carries the fine-tuned checkpoint in `LayaRuntime/ResponseModel`, verified by `response-model.json`. See [release readiness](MODEL_RELEASE_READINESS.md) before packaging from a clean checkout.
 
-GPT-Live-1 使用自身的 client delegation 事件决定何时分析；该模式不显示 Jev Mode 的 Laya 设置。旧的“语音服务 / 规则判断”选项已移除，旧设置值在升级后被忽略。本地识别提供者只转写和报告语音活动，不再自行用问句规则委派，以免重复生成。手动“生成回答”始终可用。加载失败或模型不可用时暂停 Laya 自动触发，不会切换成其他付费判断服务。
+For local bilingual speech, Zipformer is the recommended default; Paraformer remains an option. Apple Speech is available on supported systems. Laya requires Apple Silicon and macOS 14+, plus internet for initial runtime preparation. It then classifies locally without another API key. Answer generation still uses the configured analysis service and can incur its API fees. GPT-Live-1 uses its own client-delegation decisions. Manual generation remains available when Laya is missing or fails; the app does not silently switch to a paid classifier.
 
-默认阈值为 0.80，可在 0.50–0.99 调整。降低阈值可能增加触发，也会增加误触发；提高阈值更保守，可能漏掉问题。分数来自模型结构化分类中 respond 类别的概率，不是经过 LiveCopilot 实际会议数据校准的准确率。
+## Historical development record: September 2026
 
-## 行为与边界
+The following records the earlier development implementation and its validation, not the current fine-tuned classifier's acceptance results.
 
-- 持续评估流式转写的最新版本，最多约每 350 毫秒启动一次判断，同一时刻只运行一个推理请求。
-- 部分转写只用于提前判断；收到最终转写、所有已知讲话源停顿至少约 500 毫秒后，才允许自动生成。本地 Paraformer 的 Silero VAD 本身还需要约 650 毫秒静音才能确认语段结束。
-- 对于分数略低于阈值（差距不超过 0.10）的明确问句，本地问句规则可在停顿后补充触发；普通陈述和更低分数不会补充触发，手动生成始终可用。
-- 本地 ASR 漏掉句末标点时，若文本已有明确问句线索，仅给 Laya 的判断输入补问号；界面转写和发送给分析模型的问题保持原文。监听面板为“最近分数 / 阈值”保留固定的一行，分数更新不会改变窗口高度。
-- 当中文 ASR 把前一个问题与“它的／他的……”后续问题合并且没有标点时，Laya 同时评估完整语段与前一问句，取较高分数；分析仍使用完整原文。没有 Laya 分数达到阈值（或既有的接近阈值补充条件）时不会触发。
-- 远程模式排除“我”的讲话；自己开始说话、手动提问、刷新、停止或切换语音服务，会丢弃待触发结果。
-- 同一问题去重；生成仍在进行时暂存新判断，完成后复查。过期问题不会迟到触发。场景原有的 7 秒或 12 秒冷却仍适用。
-- 现场模式只有混合麦克风输入，无法可靠区分自己和别人。Laya 不提供声纹识别，也不能补救 ASR 的错字或错误说话人标签。
-- 模型只判断当前发言，不监听原始音频。1024 token 的总输入预算包含判断指令和分类选项；超长发言会按 tokenizer 实际长度保留后部。历史问题不会作为额外分类输入；近期对话上下文仍会提供给后续分析模型。
-- 判断请求只经本地子进程的匿名管道传递，不写入 Laya 日志。应用原有的会话保存行为独立于这一判断模块。
+The original setup was Settings → Services → Realtime service, using Paraformer or Apple and **Download and prepare**. Old speech-service/rule-trigger preferences were removed and ignored on upgrade. Local recognition providers emitted transcription and speech activity without independently delegating questions, avoiding duplicate generation.
 
-## 安装与来源
+The threshold ranged from 0.50 to 0.99, defaulting to 0.80. Lower values could increase both triggers and false positives; higher values could miss questions. Scores were respond-class probabilities, not calibrated meeting accuracy.
 
-Dev 版资源安装到 `~/Library/Application Support/LiveCopilot/Development/Laya`，不会修改系统 Python。正式版的数据目录独立。
+### Historical behavior and boundaries
 
-资源清单位于 `StealthApp/Resources/LayaRuntime/pins.json`：
+- Evaluated the latest transcript at most roughly every 350 ms, with one inference request at a time.
+- Partial text supported early classification; generation waited for final text and at least roughly 500 ms of silence across known speakers. Paraformer's Silero VAD additionally needed roughly 650 ms of silence to close a segment.
+- The earlier implementation supplemented explicit questions within 0.10 below threshold with local question rules. It could add a question mark to classifier input when ASR omitted punctuation, while preserving displayed and analysis text. This is historical behavior, not the current semantic-classifier contract.
+- When unpunctuated Chinese ASR merged a preceding question with a follow-up, the earlier implementation scored both the full segment and preceding question and used the higher score. Analysis still used the full original text; triggering still required the model threshold or the then-existing near-threshold rule.
+- Remote mode excluded the local speaker. Local speech, manual questions, refresh, stop, and service changes discarded pending decisions.
+- Questions were deduplicated; decisions arriving during generation were queued and rechecked afterward. Stale questions did not trigger late. Existing 7- or 12-second scenario cooldowns applied.
+- In-person microphone audio did not reliably distinguish speakers. Laya provided no voice identification and could not repair ASR errors or source labels.
+- The early classifier evaluated the current utterance only. Its 1,024-token budget included instructions/options and retained the tail of oversized input using actual tokenizer length. Conversation context was still provided to the downstream analysis model. This restriction was superseded by the later contextual response model.
+- Classification requests traveled through local anonymous pipes and were not written to Laya logs. Session persistence remained a separate application feature.
 
-本地开发的 OSS 优先分发清单、许可证、SHA-256 与 Bucket 只读权限步骤见 [OSS_MODEL_DISTRIBUTION.md](OSS_MODEL_DISTRIBUTION.md)。未配置 OSS 时仍使用既有镜像与原站；已下载模型和用户数据不会因配置 OSS 被清除。
+### Installation and sources
 
-- [laya-mlx](https://github.com/mizorewww/laya-mlx)，固定源码提交 `fc1df62828a3fedf4d8229fdac1cbd85f1cdf337`，Apache-2.0。
-- [Laya multilingual MLX](https://huggingface.co/aac6fef/laya-multilingual-mlx)，固定模型修订 `ba40c87fcb357f1643d04d71323af9cdc3b9e591`，随模型保留 LICENSE / NOTICE。
-- 独立 CPython 3.12.14、MLX 0.32.2 和完整 wheel 依赖均固定下载地址及 SHA-256。所选 MLX wheel 面向 macOS 14 Apple Silicon。
+Development resources use `~/Library/Application Support/LiveCopilot/Development/Laya`; production has a separate data directory. System Python is not modified.
 
-安装采用校验后切换的独立目录；失败或取消不覆盖之前的完整安装。重新加载只读取本地文件。首次下载约 644 MB 权重及约 34 MB tokenizer，另含 Python 与依赖；安装后会保留下载缓存以便重试。
+Pins are in `StealthApp/Resources/LayaRuntime/pins.json`. Historical OSS staging and license/hash records are in [OSS_MODEL_DISTRIBUTION.md](OSS_MODEL_DISTRIBUTION.md); later public routing is documented in [MODELSCOPE_MODEL_DISTRIBUTION.md](MODELSCOPE_MODEL_DISTRIBUTION.md).
 
-## 验证
+- [laya-mlx](https://github.com/mizorewww/laya-mlx), source commit `fc1df62828a3fedf4d8229fdac1cbd85f1cdf337`, Apache-2.0.
+- [Laya multilingual MLX](https://huggingface.co/aac6fef/laya-multilingual-mlx), upstream revision `ba40c87fcb357f1643d04d71323af9cdc3b9e591`, retaining LICENSE/NOTICE.
+- Isolated CPython 3.12.14, MLX 0.32.2, and all wheels have pinned URLs and SHA-256. The selected MLX wheel targets macOS 14 Apple Silicon.
 
-- `bash StealthApp/scripts/test-laya-trigger.sh`：无需模型的触发状态机检查。
-- 使用 Python 3.12 运行 `StealthApp/Tests/test_laya_worker.py`：协议与文件校验检查。
-- Xcode 的 LiveCopilot Debug 测试：原有原生回归、协调器事件流、运行时崩溃/超时/取消检查，分析回答使用 Mock。
-- `StealthApp/Tests/LayaRealSmoke.swift`：独立本机模型探针；读取已安装资源，测量中英文合成文本和长上下文，不调用分析 API。
+Installation verifies an isolated directory before switching. Failure/cancellation preserves the preceding complete installation. Reload reads local files only. The original initial download included about 644 MB of weights, about 34 MB of tokenizer data, Python, and dependencies; caches were retained for retries.
 
-已知限制：开发合成样例中，转述他人提问、未说完的提问仍会出现高分误判。实际使用请留意误触发和分析 API 费用。
+### Validation tools
 
-本轮仅用于本机 Dev 验证，不涉及 GitHub 发布或 Apple 公证。真实会议中的误触发率需要进一步使用评估，不能由少量合成文本推断。
+- `bash StealthApp/scripts/test-laya-trigger.sh`: model-free trigger-state checks.
+- Python 3.12 with `StealthApp/Tests/test_laya_worker.py`: protocol and file verification.
+- Native Debug XCTest: regression, coordinator events, runtime crashes/timeouts/cancellation, with Mock analysis.
+- `StealthApp/Tests/LayaRealSmoke.swift`: installed-model probe with synthetic Chinese/English text and long context, without analysis API calls.
 
-### 本机验收记录（2026-09-21）
+The early synthetic examples still produced false positives for reported questions and unfinished speech. Small synthetic sets cannot establish real-meeting false-trigger rates or API cost.
 
-- 43 项原生 XCTest 全部通过，其中包含真实 Laya + Mock 分析模型的中英文提问/普通陈述端到端测试。另有 28 项状态机检查及 4 项 Python 协议检查通过。
-- 本机真实模型短文本探针：首次冷加载约 4.8 秒；后续重新加载约 0.8 秒；几条短文本单次判断约 6–10 毫秒，超长输入截断后约 41 毫秒。不是持续音频下的延迟承诺。
-- 开发合成集保存在 `StealthApp/Tests/laya_intent_samples.json`，可用已安装的 Python 运行 `evaluate_laya_intent.py --installation <Laya/current>` 复现。这批样例参与过指令选择，不是独立准确率评测；最终 12 条中 10 条符合预期，英语转述和未完成发言各有一条误触发，明确保留这些失败样例。
-- 已安装并打开 `LiveCopilot Dev 1.4.2 (20260921.001)`，界面确认 Laya 本地已就绪，Dev 选择切换为 Laya、阈值 0.80。Developer ID 签名要求与之前 Dev 一致。正式版可执行文件 SHA-256 与任务前一致。
-- 未运行真人录音或收费分析 API 联调；未发布、推送或提交公证。
+### Local acceptance (2026-09-21)
 
-### 设置整理与索引进度（20260921.002）
+- All 43 native tests passed, including real Laya + Mock analysis for Chinese/English questions and statements; 28 state-machine checks and four Python protocol checks passed.
+- Cold load took about 4.8 seconds; reload about 0.8 seconds. Short examples took roughly 6–10 ms per decision; a truncated long input about 41 ms. These are not continuous-audio latency guarantees.
+- `StealthApp/Tests/laya_intent_samples.json` can be evaluated with installed Python and `evaluate_laya_intent.py --installation <Laya/current>`. The set influenced prompt selection, so it was not independent accuracy evaluation. Ten of twelve examples passed; one English reported question and one unfinished utterance remained false positives and were retained.
+- Installed `LiveCopilot Dev 1.4.2 (20260921.001)` showed local Laya ready and threshold 0.80. Its Developer ID requirement matched the preceding Dev app; the production executable hash was unchanged.
+- No human recording or paid analysis API integration was run. No publication, push, or notarization occurred.
 
-Laya 下载、加载、触发方式与阈值统一位于“服务 → 实时服务”；即使选择旧触发方式，也能预先下载模型。知识库索引展示由蓝色竖条组成的真实批次进度动画，成功提交后显示“索引已建立”；重建失败保留原索引并显示失败状态。
+### Settings and indexing (20260921.002)
 
-### 索引进度修正（20260921.003）
+Laya download/load/trigger/threshold controls moved together under Services → Realtime service. Models could be prepared before selecting the trigger. Knowledge indexing used a real batch-progress bar display; successful commit showed indexed, while failed rebuilding retained the previous index.
 
-本地向量计算每完成一个片段即更新进度，沿用常驻模型与逐片段 IPC，不增加模型加载次数。深蓝竖条表示完成比例，浅蓝表示剩余；取消移动高亮。模型冷启动及单片段计算期间不会伪造进度，保存索引成功后才到 100%。云端仍按批次返回进度。45 项原生 XCTest 通过，含不足 24 片段的小文档逐片段进度验证，以及重建失败保留原索引检查。
+### Index-progress correction (20260921.003)
+
+Local embeddings reported each completed chunk through the resident model and per-chunk IPC, without extra model loads. Dark blue showed completed work, light blue remaining work; moving highlights were removed. Cold loading and an in-flight chunk did not fabricate progress; 100% required successful index persistence. Cloud progress remained batch-based. All 45 native tests passed, including documents with fewer than 24 chunks and preservation of the previous index after failure.

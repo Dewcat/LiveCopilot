@@ -1,56 +1,46 @@
-# 服务选择 / Service guide
+# Service guide
 
-中文介绍页：[服务选择](https://carey-bk.github.io/LiveCopilot/#services) · [English guide](https://carey-bk.github.io/LiveCopilot/en/#services)
+[English product guide](https://carey-bk.github.io/LiveCopilot/en/#services) · [Chinese product guide](https://carey-bk.github.io/LiveCopilot/#services)
 
-## 三个独立模块
+## Three independent stages
 
-| 模块 | 可选服务 | 优势与取舍 |
+| Stage | Options | Benefits and tradeoffs |
 | --- | --- | --- |
-| 听取对话 | Apple Speech、Paraformer、GPT-Live-1 | Apple 由系统管理，本地流式但需 macOS 26+；Paraformer 本地中英流式，需下载约 238 MB，术语可能误识别；Live 使用云端语义判断，音频离机且按连接时长收费。 |
-| 检索资料 | BGE-M3、OpenAI Embeddings | BGE-M3 建库与查询向量不离机，约 635 MB、占用本机算力；OpenAI 无需本地推理，但建库文本与查询需发送至 API。两者检索库均在本机，更换向量模型需重建索引。 |
-| 组织回答 | OpenAI、DeepSeek、Qwen、GLM、Kimi、兼容 API | 全部独立于 ASR。分析服务接收问题、相关对话和检索片段，生成口语回答、总结或追问。实际效果、等待时间和价格需用自己的问题比较。 |
+| Speech | Zipformer, Paraformer, Apple Speech, GPT-Live-1 | Zipformer is recommended for local Chinese/English, with optional terminology enhancement (off by default), about 200 MB. Paraformer remains a local bilingual alternative, about 238 MB. Apple is system-managed and requires macOS 26+. Live sends audio to the cloud and charges by connected duration. |
+| Retrieval | BGE-M3, OpenAI Embeddings | BGE-M3 keeps indexing/query vectors local, about 635 MB and local compute. OpenAI avoids local inference but receives document/query text. Both keep the retrieval database local. Changing embedding models requires reindexing. |
+| Answers | OpenAI, DeepSeek, Qwen, GLM, Kimi, compatible API | Independent of ASR. Receives question, relevant conversation, and retrieved excerpts for spoken answers, recaps, or follow-ups. Compare quality, waiting time, and cost using your own questions. |
 
-SenseVoiceSmall 整句识别入口在 1.4.0 移除。旧选择迁移到 Paraformer；如果尚未下载 Paraformer，请到实时服务页下载。已有文档、模型权重、密钥、历史和其他偏好不会因此删除。
+SenseVoiceSmall's sentence-only option was retired in 1.4.0; old selections migrated to Paraformer without deleting documents, weights, keys, history, or other preferences. Current fresh configurations recommend Zipformer for mixed speech.
 
-## 自动触发不是 GPT-Live-1 独有
+## Automatic triggering
 
-- GPT-Live-1 根据实时会话语义发出委派事件，应用再调用所选分析模型。优点是能使用语义上下文，而不只是匹配提问词；不保证每次判断正确。本应用不播放 AI 语音，Live 的语音生成能力在此没有使用。
-- Apple / Paraformer 的完整转写由应用运行本地中英文问题规则，再经过停顿、冷却和去重。提问检测没有 API 费，但间接提问、反问或识别错误可能造成漏判/误触发。
-- 所有路线都可用 Option + Space 手动请求，且都不会因每个字幕片段或每次停顿就自动调用分析。远程模式的“我”不会触发；现场模式不区分房间里具体说话人。
+GPT-Live-1 supplies semantic client-delegation events; the app then invokes the selected analysis model. Local ASR uses Laya's response-intent decision, followed by deterministic pause, scheduling, and duplicate checks. Neither guarantees perfect timing. Older pre-Laya releases used local text rules; that historical behavior is not the current semantic-classifier design.
 
-## 新分析服务配置
+Manual generation is always available (current default Control–Option–Space; saved custom bindings are preserved). Captions or pauses alone do not cause an analysis request. Remote-mode local speech does not automatically trigger; in-person mode cannot distinguish individual room speakers. LiveCopilot does not produce spoken AI responses.
 
-| 预设 | 默认模型 | 默认 Base URL | 思考字段 |
+## Analysis configuration
+
+| Preset | Default model | Default base URL | Thinking |
 | --- | --- | --- | --- |
-| Qwen / 阿里云百炼 | `qwen3.8-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `enable_thinking`，默认关闭 |
-| GLM / 智谱 | `glm-5.3-flash` | `https://open.bigmodel.cn/api/paas/v4` | 必须开启思考，默认交给模型 |
+| Qwen / Alibaba Model Studio | `qwen3.8-flash` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `enable_thinking`, off by default |
+| GLM / Zhipu | `glm-5.3-flash` | `https://open.bigmodel.cn/api/paas/v4` | Mandatory for supported Flash models; model default |
 | Kimi / Moonshot | `kimi-k2.6` | `https://api.moonshot.cn/v1` | `thinking.type` |
 
-三者使用 `/chat/completions` 流式接口，支持修改模型、Base URL 和思考模式。Qwen/Kimi 默认关闭可选思考以缩短临场等待；GLM-5.3-Flash/FlashX 不支持关闭思考，界面仅提供“模型默认”和“开启”。OpenAI 分析默认 `gpt-6-sol`，DeepSeek 默认 `deepseek-flash`，使用较低思考强度。新默认值只用于新设置；已有保存的模型、Key、文档和向量索引不会被覆盖或清除。更换分析模型不需要重建知识库。
+These presets use streaming `/chat/completions` with editable model/endpoint/thinking. Qwen/Kimi optional thinking defaults off to reduce waiting; GLM-5.3-Flash/FlashX cannot disable thinking, so UI offers model default/on. OpenAI's current default is `gpt-6.1-sol`; DeepSeek uses `deepseek-flash`. Low reasoning is preferred where supported. New defaults do not overwrite saved choices, keys, documents, or indexes. Changing the answer model does not require reindexing.
 
-Qwen Key 必须与地域匹配，新业务空间可从控制台复制新域名；北京旧域名是预填起点。国际 Z.AI 可改用 `https://api.z.ai/api/paas/v4` 并选择账户可用模型；Kimi 国际账户使用 `https://api.moonshot.ai/v1`。国际/国内账户密钥、模型及价格不一定通用。Coding Plan 订阅不等于通用 API 额度。
+Qwen keys must match the region; new workspaces may supply a new console endpoint, while the older Beijing URL is a starting preset. International Z.AI uses `https://api.z.ai/api/paas/v4`; international Moonshot uses `https://api.moonshot.ai/v1`. Credentials, available models, and prices may differ by region/account. Coding Plan subscriptions are not general API credit.
 
-**先保存连接，再在软件内保存对应 Key。** 密钥仍在应用管理的 macOS Keychain 中，按服务商与端点隔离；不继承 OpenAI 或其他地域的 Key。不要将 Key 发到聊天或仓库。代码适配、编译与 Mock 验证不需要真实 Key；真实调用另需自己的有效 Key、余额和模型权限。
+**Save the connection before saving its key in the app.** Keys remain in macOS Keychain, scoped by provider and endpoint; another service/region's key is not inherited. Do not send keys in chat or commit them. Protocol/build/Mock tests need no real keys; live calls require account credit and model access. Model-default thinking omits overrides. Thinking may increase first-answer latency and output-token cost.
 
-## 费用与来源
+## Historical pricing references
 
-模型默认值和 OpenAI/DeepSeek 价格核对日期：2026-09-25。价格可能变更，实际以账户所属平台账单为准。未能从可读取官方价格页核实的具体价格不填猜测数字。
+The original pricing/default review was 2026-09-25. The following figures are that record, not a fresh price quote. Provider billing is authoritative; do not invent prices when an official page cannot be verified.
 
-- GPT-Live-1：每路 $0.05/分钟，按秒。系统音频 + 麦克风为两路，约 $0.10/分钟，连接静音也计时。分析另计。[官方说明](https://developers.openai.com/api/docs/models/gpt-live-1)
-- OpenAI Embeddings：Small $0.02、Large $0.13 / 百万输入 token，建库和查询都计费。[Small](https://developers.openai.com/api/docs/models/text-embedding-3-small)、[Large](https://developers.openai.com/api/docs/models/text-embedding-3-large)
-- OpenAI、DeepSeek 的已核对模型报价在设置中显示；其他模型/代理不可套用同一报价。[OpenAI Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)、[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/)
-- Qwen 的模型、地域、上下文档位、思考模式会影响价格。[计费](https://help.aliyun.com/zh/model-studio/model-pricing)、[接入与地域](https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope)、[思考参数](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)
-- GLM 使用通用 API 计费；Z.AI 与国内平台分别核对。[智谱价格](https://bigmodel.cn/pricing)、[GLM-5.3-Flash](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)、[Z.AI 通用端点](https://docs.z.ai/guides/overview/quick-start)
-- Kimi 按输入/输出及缓存命中计费，思考也消耗输出 token。[计费](https://platform.kimi.com/docs/pricing/chat)、[K2.6 参数](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)
+- GPT-Live-1: $0.05/minute per stream, billed by second; system audio + microphone are two streams, about $0.10/minute, including connected silence. Analysis is separate. [Reference](https://developers.openai.com/api/docs/models/gpt-live-1)
+- OpenAI Embeddings: Small $0.02 / Large $0.13 per million input tokens, for both indexing and queries. [Small](https://developers.openai.com/api/docs/models/text-embedding-3-small), [Large](https://developers.openai.com/api/docs/models/text-embedding-3-large)
+- Settings displays reviewed OpenAI/DeepSeek model prices; do not apply them to other models/proxies. [OpenAI](https://developers.openai.com/api/docs/models/gpt-6-sol), [DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/)
+- Qwen prices depend on model, region, context tier, and thinking. [Pricing](https://help.aliyun.com/zh/model-studio/model-pricing), [regions](https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope), [thinking](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)
+- GLM general API and international Z.AI require separate checks. [Zhipu pricing](https://bigmodel.cn/pricing), [GLM-5.3-Flash](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash), [Z.AI endpoint](https://docs.z.ai/guides/overview/quick-start)
+- Kimi bills input/output and cache usage; thinking consumes output tokens. [Pricing](https://platform.kimi.com/docs/pricing/chat), [K2.6](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)
 
-## English
-
-Speech recognition, embeddings, and answer generation are independent. Apple and Paraformer keep audio local, and BGE-M3 keeps indexing/query embeddings local. Only selected cloud routes receive their corresponding audio/text. Using a non-OpenAI analysis provider with local speech and embeddings does not require an OpenAI key.
-
-Local ASR **can trigger automatic assistance**: the app detects questions in committed text, then applies silence, cooldown, and duplicate checks. GPT-Live-1 instead provides semantic delegation decisions. Neither guarantees perfect timing, and the manual shortcut remains available. LiveCopilot does not use voice output.
-
-Qwen, GLM, and Kimi presets use streaming Chat Completions, editable models/endpoints, and provider-specific thinking controls shown above. Save the connection before saving its key. Credentials remain in Keychain, scoped to provider and endpoint; changing the region cannot silently reuse another destination's key. Model-default thinking omits overrides. Optional thinking can increase first-answer latency and output-token cost; some models cannot disable it.
-
-Qwen keys must match the endpoint region. Z.AI and Moonshot international accounts use their own endpoints and credentials. Coding Plan subscriptions are not general API credit. Refer to the official links above for current account/model pricing; no unverified flat price is assigned to every model in a provider.
-
-**Validation boundary:** Qwen/GLM/Kimi have deterministic request, credential-isolation, thinking-parameter, and streamed-response tests. No real credentials for these three providers were used. The UI and local ASR/embedding runtime were tested separately; account access, billing and real provider latency remain to be validated with a user's key.
+**Validation boundary:** Qwen/GLM/Kimi have deterministic request, credential-isolation, thinking-field, and streaming tests. No real credentials for those providers were used in the documented integration checks. UI/local ASR/embedding tests do not prove account access, billing, latency, or live answer quality. Local speech + BGE-M3 + another analysis provider requires no OpenAI key.

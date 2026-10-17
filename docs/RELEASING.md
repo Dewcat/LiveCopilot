@@ -19,6 +19,12 @@ python3 StealthApp/scripts/release-version.py --check-tag "$RELEASE_TAG" \
 
 Use `$RELEASE_TAG` for the GitHub Release tag and the versioned Hong Kong directory; use `$RELEASE_VERSION` in the DMG name. Signing rejects a stale application version, packaging validates the app against the same source, and finalization rejects a mismatched DMG filename. Release metadata in `site/download.json`, download pages and the signed feed is a snapshot of the **published** artifact, not another source for the next build. Change it only when publishing the matching artifact. Keep existing tags, release assets and historical notes unchanged.
 
+## Fine-tuned Laya packaging gate
+
+Before building from a clean checkout, follow [model release readiness](MODEL_RELEASE_READINESS.md). The accepted response checkpoint is currently a local, untracked packaging input. A successful compilation without `LayaRuntime/ResponseModel/` and `response-model.json` can silently use the older downloaded upstream model because both optional resources are absent. Do not publish that build as containing the accepted fine-tuning.
+
+Stage the complete accepted checkpoint and its receipt through the validated model-bundling workflow before signing. Verify every receipt hash in the final candidate and run the response-model acceptance checks. For a separate-download design, first publish an immutable artifact and implement/validate its download and installation pins; a model upload alone does not change runtime selection. Keep previous model revisions available for existing clients.
+
 ## Developer ID release (1.4.1 and later)
 
 The maintainer needs an installed **Developer ID Application** certificate and its private key. Keep the private key in Keychain. `setup-signing.sh` now only lists identities; it no longer creates or trusts a self-signed root or changes key ACLs. Unsigned/ad-hoc Debug builds remain separate from distribution builds.

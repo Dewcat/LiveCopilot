@@ -1,18 +1,18 @@
 # LiveCopilot 2.1.1
 
-## 本次变化
+## Changes
 
-- 设置窗口使用透明顶栏，隐藏重复的窗口标题，让侧栏材质和内容背景延伸到窗口顶部；保留原生窗口控制按钮、拖动和缩放。
-- 全新安装默认开启自动检查更新。用户已经保存的关闭选择继续保留，下载和安装仍由用户确认。
-- 快捷键页新增“显示／隐藏悬浮窗”，默认 Option + H，可修改并单独重置；保存后立即生效，重启后保留。菜单、操作提示与引导中的快捷键文字同步显示实际设置。
-- 录入快捷键时暂停本应用的全局热键，Esc、点击其他位置或离开窗口可取消；重复组合会显示提示并保留原有设置。
+- Transparent Settings title bar removes the duplicate title and extends sidebar/content backgrounds to the top, retaining native controls, dragging, and resizing.
+- Fresh installs enable automatic update checks; saved opt-outs remain. Download/installation still require user confirmation.
+- Shortcuts adds Show/Hide Overlay, default Option + H, editable/resettable, immediate and persistent. Menus, tips, and onboarding show the actual binding.
+- Recording a shortcut suspends this app's global hotkeys. Esc, outside click, or leaving the window cancels; duplicate combinations show an error and preserve the old setting.
 
-## 验证
+## Validation
 
-- XCTest 执行 81 项，跳过 1 项需要真实 Laya 环境的测试，其余通过。
-- 新增测试覆盖旧快捷键迁移、悬浮窗快捷键持久化与重置、重复冲突、暂停与恢复热键，以及自动检查默认开启且保留显式关闭选择。
-- 独立预览已实际检查顶栏与侧栏连贯、快捷键录入、冲突拒绝、重置、Esc 取消及切页退出录入；关于页显示自动检查默认开启，预览不会联网更新。原生按键分发路径另有测试覆盖。
-- Universal Release 构建通过；版本 2.1.1 / build 20260930.091834。10 个 Mach-O 组件均通过 Developer ID、加固运行时、安全时间戳和双架构校验。
-- Apple 应用公证 `20aa3a20-137f-4b09-bef4-c23c3a46ad17` 与 DMG 公证 `66f0fa1d-5b47-4c0a-95da-3b9d592631f8` 均 Accepted，无问题；应用与 DMG 已附加票据，Gatekeeper 与最终磁盘映像完整性校验通过。
-- DMG SHA-256：`63a3846eeda9c0209c12a7018d2087d646d87f08e9ef1894b579ce1c76aea3a9`。
-- 安装包已交付桌面供手动安装测试；本机 2.1.0 应用与配置保留。本版本尚未发布到 GitHub 或官网。
+- Eighty-one XCTest cases ran; one real-Laya test skipped, all others passed.
+- Added migration, visibility-shortcut persistence/reset/conflict, hotkey suspension/restoration, and default-on updates preserving explicit opt-out tests.
+- Isolated preview checked continuous title/sidebar background, shortcut capture/conflict/reset/Esc/page navigation, and default-on updates without network access. Native key dispatch has separate test coverage.
+- Universal Release passed: 2.1.1 / build 20260930.091834. Ten Mach-O components passed Developer ID, hardened-runtime, timestamp, and dual-architecture verification.
+- App notarization `20aa3a20-137f-4b09-bef4-c23c3a46ad17` and DMG notarization `66f0fa1d-5b47-4c0a-95da-3b9d592631f8` were Accepted without issues. Both tickets stapled; Gatekeeper and final image integrity passed.
+- DMG SHA-256: `63a3846eeda9c0209c12a7018d2087d646d87f08e9ef1894b579ce1c76aea3a9`.
+- Delivered the package to Desktop for manual installation testing. Local 2.1.0 and settings remained. At this checkpoint, no GitHub/site publication had occurred.

@@ -1,25 +1,25 @@
-# 1.2.1 — 窗口收放与 LIVE 图标
+# 1.2.1 — overlay expansion and LIVE icon
 
-## 使用方式
+## Behavior
 
-- 默认启用“根据内容自动调整高度”和“在屏幕右侧自动隐藏”，旧设置中的其他选项保留。
-- 空白窗口约 480 × 240 pt；转写和回答出现后保持顶部、宽度不动，向下扩展。转写保留滚动区，回答可扩展到当前屏幕可用高度，再通过滚动阅读。异常矮的显示区域可滚动整张面板访问控件。
-- 鼠标停留屏幕右侧 3 pt 范围约 0.16 秒唤出；离开窗口约 0.9 秒后收起。排除菜单栏和 Dock 的边角，支持其他显示器的右边缘。输入和鼠标拖动期间保持展开。
-- 图钉固定窗口并关闭贴边隐藏；再次取消固定后收起。`⌥H`、Dock 和菜单栏始终可唤出。手动回答快捷键会唤出窗口，自动建议不会强行展开隐藏窗口。
-- 拖动上下边缘进入手动高度；在“通用 → 悬浮窗”中重新打开自动高度。固定状态可从头部移动窗口。
-- 动画遵守 macOS“减少动态效果”。隐藏只影响悬浮窗，不停止监听或生成回答。
+- Automatic content height and right-edge hiding default on; other existing settings remain.
+- Empty overlay is about 480 × 240 pt. Transcripts/answers expand it downward while preserving top/width. Transcript scrolls; answers expand to screen height then scroll. Very short screens allow the whole panel to scroll to controls.
+- Hover within 3 pt of the right edge for roughly 0.16 s to reveal; leave for about 0.9 s to hide. Menu-bar/Dock corners are excluded, other displays supported, and typing/dragging keeps it open.
+- Pinning disables edge hiding; unpinning collapses. `⌥H`, Dock, and menu bar always reveal. Manual answer shortcuts reveal; automatic suggestions do not force open a hidden window.
+- Dragging top/bottom enters manual height; restore automatic height in General → Overlay. A pinned window moves from its header.
+- Animations respect Reduce Motion. Hiding does not stop listening or generation.
 
-## 图标
+## Icon
 
-后层气泡改为粉红渐变，前层保留蓝色与陶瓷底座。左侧波形缩小，右侧使用更大的大写 **LIVE**，字形为 Avenir Next Heavy Italic 转曲。粉色录制圆点带径向光晕和高光。所有字体均已转为矢量轮廓，SVG 没有字体依赖或嵌入位图。
+The rear bubble uses a pink gradient, with a blue foreground and ceramic base. A smaller waveform sits beside larger uppercase **LIVE**, outlined from Avenir Next Heavy Italic. The pink recording dot has radial glow/highlight. All text is vector outlines; SVG has no font dependencies or embedded bitmap.
 
-文件位于 `assets/brand/LiveCopilot.svg`、`LiveCopilot-mark.svg`、`LiveCopilot-preview.png`；安装图标是重新生成的 `StealthApp/Resources/AppIcon.icns`。
+Assets: `assets/brand/LiveCopilot.svg`, `LiveCopilot-mark.svg`, `LiveCopilot-preview.png`; regenerated app icon: `StealthApp/Resources/AppIcon.icns`.
 
-## 验证范围
+## Validation
 
-- Universal Release 编译通过；55 项核心检查、17 项原生 XCTest 通过。
-- 原生测试覆盖负坐标显示器、屏幕边界、悬停停留与离开延迟、输入期间保持展开、隐藏窗口增长、手动尺寸覆盖待执行自动增长、手动唤出与自动回答隐藏行为。
-- 独立 Mock 应用实机检查了空白紧凑窗口、模拟转写、较长中英文回答、来源列表和新设置界面。无真实音频采集或模型 API 请求。
-- 修复了 NSHostingView 默认尺寸约束可能阻止隐藏窗口增长的问题，以及初次布局回调早于窗口赋值导致初始高度未收紧的问题。
-- 新版仍采用 ad-hoc 签名；本更新没有迁移签名证书或重置用户权限。更新后 macOS 可能要求重新确认钥匙串或系统音频权限。
-- GitHub Release 没有在这次界面更新中发布。
+- Universal Release, 55 core checks, and 17 native tests passed.
+- Tests cover negative-coordinate displays, bounds, hover/leave delay, typing visibility, hidden growth, manual resize superseding queued growth, and manual versus automatic reveal.
+- Isolated Mock UI checked compact empty state, simulated transcription, long Chinese/English answers, sources, and settings, without real audio or API requests.
+- Fixed NSHostingView default constraints preventing hidden growth and initial sizing callbacks arriving before the window was assigned.
+- Still ad-hoc signed; no certificate migration or permission reset. macOS may request renewed Keychain/system-audio permission after updating.
+- No GitHub Release was published for this UI update.

@@ -1,26 +1,26 @@
-# 1.3.1：刷新会话、口语回答与持久化密钥
+# 1.3.1 — conversation refresh, spoken answers, and persistent keys
 
-## 使用变化
+## Changes
 
-- 顶部新增 ↻ 刷新按钮：抛弃当前转写、临时字幕、输入草稿、回答及前一个问题上下文，恢复紧凑高度。已开启监听时重新连接一个干净会话，继续收音。保留知识库、设置、已保存历史；被抛弃的当前会话不进入历史。
-- 回答建议改为可以直接说出的短段落，依据与补充单独放后面。知识库提供事实依据，同时允许相关常识、类比、合理推理和建议；仍禁止虚构个人经历、项目指标和引用。
-- 总结侧重实际讨论、决定与未解决的问题；追问生成一个可直接问出口的问题，使用独立任务提示词。根据实际问题或对话的语言作答。
-- 语言与外观标题使用调色盘图形。
-- 输入并保存的 API Key 安全持久化于应用管理的钥匙串项。启动与切换服务只静默读取；遇到旧凭据访问限制时，明确显示“已保存 · 待授权”，不再像没填过一样，也不自动弹出系统窗口。
+- Header refresh discards current transcript, partial captions, draft, answer, and previous-question context, restoring compact height. Active listening reconnects a clean session and continues capture. Knowledge/settings/saved history remain; the discarded current session is not saved by this historical implementation.
+- Answers use short paragraphs suitable for speaking, followed by separate evidence/notes. Documents support facts while relevant general knowledge, analogy, reasoning, and suggestions remain allowed. Personal experience, metrics, and citations must not be invented.
+- Recap focuses on discussion, decisions, and open issues. Follow-up generates one directly askable question with its own task prompt. Language follows the actual question/conversation.
+- Language & Appearance uses a palette icon.
+- Keys persist in app-managed Keychain items. Startup/service changes read silently; inaccessible saved keys show **Saved · Authorization required**, without automatic prompts or pretending no key exists.
 
-## 旧密钥与升级
+## Legacy credentials
 
-旧版手动建立的 `LiveCopilot-OpenAI` 等项保留。应用在有权限时复制到 `LiveCopilot-Credentials-v1`；需要授权则在服务页点击“授权已保存的密钥”。输入系统密码只在 macOS 弹窗中完成，无需提供给聊天。移除应用管理的密钥不会自动重新导入旧副本。
+Legacy `LiveCopilot-OpenAI` and similar items remain. When permitted, the app copies them to `LiveCopilot-Credentials-v1`; otherwise users explicitly choose **Authorize saved key**. Enter system passwords only in macOS dialogs. Removing an app-managed key does not automatically reimport its legacy copy.
 
-Keychain 本身就是正式 macOS 软件常用的安全保存方式。开发签名变化和保存密钥是两个问题：当前仍为临时签名，升级后可能需要显式授权一次。正式分发需要持续使用稳定的 Developer ID 签名，不能靠明文保存 Key 或放宽访问权限来规避。
+Keychain persistence and signing continuity are separate issues. This build was still ad-hoc signed and could require one explicit authorization after upgrade. Distribution needs stable Developer ID signing, not plaintext keys or weaker ACLs.
 
-## 验收
+## Acceptance
 
-- 60 项确定性检查通过，包含三类提示词的行为约束。
-- 24 项原生 XCTest 通过，包含回答生成中刷新、监听中刷新且同一问题能再次触发、密钥静默/显式迁移、重启复用、更换、删除不复活、服务与端点隔离、真实 Keychain 合成凭据的静默读取与交互策略恢复。
-- 测试不读取真实 API Key、不调用收费模型；Mock 偏好在测试后恢复。
-- 已安装 `~/Applications/LiveCopilot.app`：**1.3.1 / 20260916.031556**，arm64 + x86_64；签名校验通过。可执行文件 SHA-256：`c446d6dd74229ba9b1e0c88360d03e5c42d06b366c003546674c8f40993f99a9`。
-- 真实界面已确认：顶部刷新按钮、调色盘图标、DeepSeek 原有密钥显示“已保存 · 待授权”；首次启动没有钥匙串弹窗。保留用户现有 Paraformer、本地向量、DeepSeek 配置。
-- 用户完成旧 DeepSeek 项授权后，迁移成功；完全退出应用再重开，静默读取成功，未再次弹窗。真实 `deepseek-flash` 回答成功流式完成，首字约 4.3 秒；通用概念回答使用连贯段落并扩展一般知识，没有杜撰个人经历。
-- 真实 GUI 刷新验证：已有回答和多行输入草稿均清空，窗口由 480×768 收回 480×240。切换到 OpenAI Live 后仍只显示“已保存 · 待授权”，没有自动弹窗；已恢复原来的 Paraformer 选择。
-- 本次临时签名改变，安装脚本已归档旧应用并重置本应用的录屏授权记录；首次监听仍需在 macOS 允许当前应用，系统设置已打开到对应开关。
+- Sixty deterministic checks passed, including all three task-prompt contracts.
+- Twenty-four native tests passed: refresh during generation/listening and subsequent repeated questions; silent/explicit migration; restart, replacement, deletion without resurrection; provider/endpoint isolation; real Keychain synthetic-item silent access and interaction-policy restoration.
+- Tests read no real keys and called no paid models; Mock preferences were restored.
+- Installed **1.3.1 / 20260916.031556** at `~/Applications/LiveCopilot.app`, arm64/x86_64, signature valid. Executable SHA-256: `c446d6dd74229ba9b1e0c88360d03e5c42d06b366c003546674c8f40993f99a9`.
+- UI confirmed refresh/palette icons and existing DeepSeek key awaiting authorization, without a startup prompt. Existing Paraformer/local-vector/DeepSeek settings remained.
+- After user authorization, legacy DeepSeek migration and a full restart succeeded silently. A real `deepseek-flash` response streamed, first text about 4.3 seconds; conceptual answers used connected prose/general knowledge without invented personal experience.
+- GUI refresh cleared an answer and multiline draft, shrinking 480 × 768 to 480 × 240. Switching OpenAI Live showed saved/authorization-required without prompting; Paraformer was restored.
+- Changed temporary signing caused the installer to archive the old app and reset this app's ScreenCapture record. First listening still required user authorization; the relevant system settings were opened.

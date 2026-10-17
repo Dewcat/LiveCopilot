@@ -1,28 +1,30 @@
-# 本地模型下载（2026-09-23 Dev）
+# Local model downloads (2026-09-23 development record)
 
-下载源由程序自动选择，先尝试镜像，失败后尝试原站；旧版的下载源偏好不再生效。镜像为第三方服务，不保证境内可达，也不保证重定向目标位于境内。
+This is a historical record. See [ModelScope distribution](MODELSCOPE_MODEL_DISTRIBUTION.md) and [current release readiness](MODEL_RELEASE_READINESS.md) for later changes.
 
-| 内容 | 镜像优先 | 原站 |
+The application chooses download sources automatically: mirrors first, then upstream. Old source preferences no longer apply. Third-party mirrors do not guarantee mainland availability or a mainland redirect destination.
+
+| Content | Preferred mirror | Upstream |
 | --- | --- | --- |
-| BGE-M3 Q8、Paraformer 编码器/解码器/词表 | HF-Mirror | Hugging Face |
-| Laya 模型、分词器、配置 | HF-Mirror | Hugging Face |
-| Laya 固定版本 Python wheels | 清华 PyPI 镜像 | files.pythonhosted.org |
-| Silero VAD | 暂无已验证备用源 | GitHub Releases |
-| Laya 独立 Python、源码 | 暂无已验证备用源 | GitHub Releases / codeload |
-| Apple ASR | 系统管理 | Apple |
+| BGE-M3 Q8; Paraformer encoder, decoder, vocabulary | HF-Mirror | Hugging Face |
+| Laya model, tokenizer, configuration | HF-Mirror | Hugging Face |
+| Pinned Laya Python wheels | Tsinghua PyPI mirror | files.pythonhosted.org |
+| Silero VAD | No verified alternative at this checkpoint | GitHub Releases |
+| Isolated Laya Python and source | No verified alternative at this checkpoint | GitHub Releases / codeload |
+| Apple ASR | System managed | Apple |
 
-所有替代源仍使用同一份固定 SHA-256；校验失败不会安装，继续尝试原站。已有模型不需要重新下载或重建索引。
+Every source uses the same pinned SHA-256. A checksum failure prevents installation and causes another source to be tried. Existing models do not require another download or index rebuild.
 
-BGE/Paraformer 显示当前文件百分比、已下载 MB、MB/s 和源站域名；未知 Content-Length 时只显示字节和速度。切换文件或下载源会重新计算该文件进度。网络失败时保留 URLSession 可用的续传数据重试；不承诺跨退出/取消的续传。Laya 大模型沿用持久化分块缓存，并按已完成字节更新模型阶段进度（非全安装包速度）。
+BGE/Paraformer show the current file's percentage, downloaded MB, MB/s, and source hostname. Unknown Content-Length shows only bytes and speed. Progress resets for each file/source. Network retries retain URLSession resume data when available; resuming across cancellation or exit is not promised. Laya retains a persistent chunk cache and reports completed model bytes, not whole-installation speed.
 
-智源官方模型平台页面可访问，但尚未确认当前 GPUStack Q8 GGUF 文件的官方下载地址，因此未将未经验证的链接加入程序。用户目前没有国内对象存储，本次未上传模型或创建托管服务。
+The official BAAI platform was reachable, but a verified official URL for the GPUStack Q8 GGUF was not established, so no speculative URL was added. At this checkpoint the user had no domestic object storage; no models were uploaded and no hosting service was created.
 
-验证：镜像实际下载 Laya LICENSE、encoder/config.json 和一个固定版本 PyPI wheel，与现有 SHA-256 一致。curl 探测使用 --noproxy '*'，但不代表排除了系统 VPN、透明路由等影响；未完成全新无代理环境下全量安装验证。镜像部分响应仍重定向 Hugging Face/CDN。
+Validation downloaded Laya LICENSE, encoder/config.json, and a pinned PyPI wheel through mirrors and matched existing hashes. curl used `--noproxy '*'`; this does not exclude system VPNs or transparent routing. A full fresh installation on a verified proxy-free network was not tested. Some mirror responses still redirected to Hugging Face/CDN.
 
 ## 20260923.002
 
-移除下载源选择并忽略旧偏好，自动尝试备用源。Laya Python 本体通过 URLSession 汇报字节/速度；其余下载每 0.5 秒汇报已落盘字节和区间平均速度，缓存不计入新传输速度。未知总大小显示活动进度条和字节，不编造百分比。安装/校验阶段显示阶段进度。Apple 系统语音资源安装接口未提供下载字节/速度。此次保留已下载模型。
+Removed manual source selection and ignored old preferences. Laya's Python archive reports URLSession bytes/speed; other downloads report written bytes and interval speed every 0.5 seconds, excluding cached bytes. Unknown totals use an indeterminate indicator and byte counts rather than invented percentages. Installation/verification uses stage progress. Apple's speech-resource API exposes no download bytes or speed. Existing downloads were retained.
 
 ## 20260923.003
 
-BGE/Paraformer 卡片增加删除本地模型按钮；Laya 增加删除模型、运行环境和下载缓存按钮。删除前确认，忙碌时禁用。BGE 删除前关闭常驻推理进程；知识库、索引和设置保留。Apple 共享语言资源不直接删除。删除测试仅用临时合成数据，安装更新不会清理真实模型。
+Added local-model deletion for BGE/Paraformer and deletion of Laya models, runtime, and download cache. Actions require confirmation and are disabled while busy. BGE stops its resident inference process first; knowledge documents, indexes, and settings remain. Shared Apple language assets are not directly deleted. Deletion tests used only temporary synthetic data; installing the update does not clear real models.
