@@ -152,6 +152,7 @@ final class AppCoordinator: ObservableObject {
     private var sessionWasVoice = false
     private var sessionAnswerIDs = Set<UUID>()
     private var archivedAnswerSessions: [UUID: UUID] = [:]
+    private var namingGenerations: [UUID: UUID] = [:]
     private var namingTasks: [UUID: Task<Void, Never>] = [:]
     private var liveEpoch = UUID()
     private var activeDelegations = Set<String>()
@@ -911,19 +912,38 @@ final class AppCoordinator: ObservableObject {
         }
         sessionStartedAt = nil; sessionWasVoice = false; sessionAnswerIDs = []
     }
+    func renameSession(_ id: UUID, title: String) {
+        guard SessionNaming.clean(title) != nil else { return }
+        namingGenerations[id] = nil
+        namingTasks.removeValue(forKey: id)?.cancel()
+        sessions.rename(id, title: title)
+    }
+    func regenerateSessionTitle(_ id: UUID) {
+        guard let record = sessions.sessions.first(where: { $0.id == id }),
+              !record.namingInput.isEmpty else { return }
+        nameSession(record)
+    }
     private func nameSession(_ record: SessionRecord) {
         guard namingTasks[record.id] == nil else { return }
-        sessions.update(record.id) { $0.namingState = "pending" }
+        guard sessions.update(record.id, change: { $0.namingState = "pending" }) else { return }
+        let generation = UUID()
+        namingGenerations[record.id] = generation
         let settings = settings, liveKey = cachedKey, analysisKey = cachedAnalysisKey
         namingTasks[record.id] = Task { [weak self] in
             guard let self else { return }
-            defer { self.namingTasks[record.id] = nil }
+            defer {
+                if self.namingGenerations[record.id] == generation {
+                    self.namingTasks[record.id] = nil; self.namingGenerations[record.id] = nil
+                }
+            }
             do {
                 let provider = try ReasoningProviderFactory.make(settings: settings, liveKey: liveKey, analysisKey: analysisKey)
                 let title = try await SessionNaming.generate(for: record, provider: provider)
                 try Task.checkCancellation()
+                guard self.namingGenerations[record.id] == generation else { return }
                 self.sessions.update(record.id) { $0.generatedTitle = title; $0.namingState = "named" }
             } catch {
+                guard self.namingGenerations[record.id] == generation else { return }
                 self.sessions.update(record.id) { $0.namingState = "failed" }
             }
         }

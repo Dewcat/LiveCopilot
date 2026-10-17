@@ -50,3 +50,9 @@ Actual speaker-to-microphone, Zipformer, Laya and configured analysis API flow (
 Session `55E48594-2A54-4357-83EC-77139D49D789` retained two completed answers, their original question text, timestamps and citation snapshots (3 and 1 respectively). Existing session files were unchanged. After normal quit, verified process exit, and relaunch, the installed history UI restored the corrected title and both turns. The session JSON remained byte-identical: SHA256 `ae8f103828c8a7291761dd46fea66a5a0dc4d7fbfed94f0551a7564ab2ed5be6`.
 
 This verifies correction on the observed case, not universal ASR correction. The original speech and answers are never rewritten; long sessions have bounded sampling and ambiguous terms may be omitted. Test artifacts: `/tmp/livecopilot-naming-acceptance/`, build log `/tmp/naming-refinement-build.log`.
+
+## 2026-10-17: history context-menu rename
+
+Signed installed build 20261017.065450 adds Rename and Generate title again to each session context menu. Manual edits invalidate/cancel an in-flight naming generation so late results cannot overwrite them. Automatic failure retains the existing title and presents a retry hint. Empty, multiline and over-80-character titles are rejected.
+
+Release HistoryTests: 9 passed, 1 conditional API test skipped, 0 failures. Installed UI acceptance on existing synthetic session 2D16B4F1-A691-49DB-AC02-EE1510FC11E6: manually renamed to 青松缓存验收（手动修正）, then invoked the actual configured analysis API through the context menu; title became 青松缓存优化延迟与发布回滚标准. All non-title session fields and all other history files were unchanged. After normal quit/process exit and relaunch, the history list restored the new title and the JSON was byte-identical to the pre-restart snapshot. Artifacts: /tmp/livecopilot-rename-acceptance; build log: /tmp/history-rename-build.log.

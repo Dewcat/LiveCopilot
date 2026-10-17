@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 struct HistoryView: View {
     @ObservedObject var coordinator: AppCoordinator
     var body: some View {
-        HistoryBrowser(sessions: coordinator.sessions, english: coordinator.settings.language == .english)
+        HistoryBrowser(sessions: coordinator.sessions, english: coordinator.settings.language == .english,
+                       rename: coordinator.renameSession, regenerate: coordinator.regenerateSessionTitle)
             .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
             .environment(\.locale, coordinator.settings.language.locale)
     }
@@ -15,6 +16,10 @@ struct HistoryView: View {
 struct HistoryBrowser: View {
     @ObservedObject var sessions: SessionStore
     var english = false
+    var rename: ((UUID, String) -> Void)? = nil
+    var regenerate: ((UUID) -> Void)? = nil
+    @State private var pendingRename: SessionRecord?
+    @State private var titleDraft = ""
     @State private var query = ""
     @State private var selectedID: UUID?
     @State private var pendingDelete: SessionRecord?
@@ -44,6 +49,17 @@ struct HistoryBrowser: View {
         .onAppear { reconcileSelection() }
         .onChange(of: query) { _, _ in reconcileSelection() }
         .onChange(of: filtered.map(\.id)) { _, _ in reconcileSelection() }
+        .alert(b("Rename session", "重命名会话"), isPresented: Binding(get: { pendingRename != nil }, set: { if !$0 { pendingRename = nil } })) {
+            TextField(b("Session title", "会话名称"), text: $titleDraft)
+            Button(b("Cancel", "取消"), role: .cancel) { pendingRename = nil }
+            Button(b("Save", "保存")) {
+                if let record = pendingRename {
+                    if let rename { rename(record.id, titleDraft) }
+                    else { sessions.rename(record.id, title: titleDraft) }
+                }
+                pendingRename = nil
+            }.disabled(SessionNaming.clean(titleDraft) == nil)
+        } message: { Text(b("Enter a title of 1–80 characters. The conversation content stays unchanged.", "输入 1–80 个字的名称，不会修改会话内容。")) }
         .confirmationDialog(b("Delete this session?", "删除这条会话？"), isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
             Button(b("Delete session", "删除会话"), role: .destructive) {
                 if let record = pendingDelete { sessions.delete(record); bookmarks[record.id] = nil }
@@ -84,6 +100,10 @@ struct HistoryBrowser: View {
                                         .contentShape(Rectangle())
                                 }.buttonStyle(.plain).accessibilityIdentifier("history-session-" + session.id.uuidString)
                                     .contextMenu {
+                                        Button(b("Rename…", "重命名…")) { titleDraft = session.title; pendingRename = session }
+                                        Button(b("Generate title again", "重新自动命名")) { regenerate?(session.id) }
+                                            .disabled(regenerate == nil || session.namingState == "pending" || session.namingInput.isEmpty)
+                                        Divider()
                                         Button(b("Copy session", "复制完整会话")) { copy(session.export(markdown: false)) }
                                         Menu(b("Export", "导出")) { exportButtons(session) }
                                         Divider()
@@ -116,6 +136,7 @@ struct HistoryBrowser: View {
                 Text(HistoryFormat.date(session.startedAt, english: english) + " – " + HistoryFormat.date(session.endedAt, english: english) + " · \(session.durationLabel) · \(session.messageCount) " + b("messages", "条消息"))
                     .font(.caption).foregroundStyle(.secondary)
                 if session.namingState == "pending" { Text(b("Naming this session…", "正在生成会话名称…")).font(.caption2).foregroundStyle(.secondary) }
+                if session.namingState == "failed" { Text(b("Could not generate a title. Your previous title is kept. Check the analysis service and try again from the context menu.", "自动命名失败，已保留原名称。请检查分析服务，再从右键菜单重试。")).font(.caption).foregroundStyle(.orange) }
                 if let error = exportError ?? sessions.lastError { Text(error).font(.caption).foregroundStyle(.red) }
             }.padding(18)
             Divider()

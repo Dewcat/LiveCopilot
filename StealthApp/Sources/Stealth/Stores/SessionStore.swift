@@ -67,6 +67,12 @@ final class SessionStore: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func rename(_ id: UUID, title: String) -> Bool {
+        guard let title = SessionNaming.clean(title) else { return false }
+        return update(id) { $0.generatedTitle = title; $0.namingState = "manual" }
+    }
+
     func delete(_ record: SessionRecord) {
         if let url = fileURL(for: record.id) {
             do { try fileManager.removeItem(at: url) }

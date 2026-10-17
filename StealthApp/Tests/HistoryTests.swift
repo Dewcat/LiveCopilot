@@ -69,6 +69,19 @@ final class HistoryTests: XCTestCase {
         XCTAssertTrue(store.sessions.isEmpty); XCTAssertTrue(SessionStore(root: root).sessions.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(record.id.uuidString + ".txt").path))
     }
+    @MainActor func testManualRenamePersistsAndRejectsInvalidTitles() throws {
+        let root = try directory(), store = SessionStore(root: root), at = Date(timeIntervalSince1970: 1_790_000_000)
+        let record = try XCTUnwrap(store.saveSnapshot(lines: [], startedAt: at, answers: [answer(at)]))
+        XCTAssertTrue(store.rename(record.id, title: "  手动修正标题  "))
+        XCTAssertFalse(store.rename(record.id, title: " "))
+        XCTAssertFalse(store.rename(record.id, title: String(repeating: "字", count: 81)))
+        let restored = try XCTUnwrap(SessionStore(root: root).sessions.first)
+        XCTAssertEqual(restored.title, "手动修正标题")
+        XCTAssertEqual(restored.namingState, "manual")
+        XCTAssertEqual(restored.answers, record.answers)
+        store.delete(restored)
+        XCTAssertFalse(store.rename(record.id, title: "不能恢复删除记录"))
+    }
     @MainActor func testNamingBoundedRequestSuccessFailureAndTimeout() async throws {
         let at = Date()
         var record = SessionRecord(startedAt: at, endedAt: at.addingTimeInterval(500), lines: (0..<100).map { .init(from: .init(speaker: .room, at: at.addingTimeInterval(Double($0)), content: "合成缓存讨论 " + String(repeating: "样本", count: 1000))) })
