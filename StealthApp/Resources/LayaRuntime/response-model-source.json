@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "revision": "32a060912987d9823a1e3d1f4c573f21ca581a39",
+  "base_url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/",
+  "receipt_sha256": "f88d0668265188a12630a3beed24ed142700699dd6284af63338cafc07436566",
+  "files": {
+    "model.safetensors": {
+      "sha256": "e505137a5e1bfa8392618c7f62e1733ed995deb66c2883882c0677150129ed9a",
+      "size": 643835426
+    },
+    "LICENSE": {
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "size": 10173
+    },
+    "mlx_config.json": {
+      "sha256": "23b3412c471ac7564e43d95650c6e18d46f33cd50fe2a53042abb399a6254dfd",
+      "size": 172
+    },
+    "FINETUNE-NOTICE.txt": {
+      "sha256": "e3acf69fcf029d040ed4e2e385bb1f7d60beebedd20d75e9f617c04ac7ed4462",
+      "size": 204
+    },
+    "NOTICE": {
+      "sha256": "f23ae8ae701f5a43e186182e387aeef00b666daed18a946fc7c9ea827b00a8fa",
+      "size": 698
+    },
+    "rl_agent_config.json": {
+      "sha256": "bc67064053fdf321be02bfe045745cd61929b3b151c2d83b174cbc9d2894909d",
+      "size": 3440
+    },
+    "encoder/config.json": {
+      "sha256": "01818c138acbaa64583a4a3f1fcf75ec22a4c103288d51c7fb6562baca049281",
+      "size": 1939
+    },
+    "tokenizer/tokenizer_config.json": {
+      "sha256": "e5e210187e4f3ed501a718bf929027ba6fb2890404a9ea35240e7e05e805b4e3",
+      "size": 772
+    },
+    "tokenizer/tokenizer.json": {
+      "sha256": "dbba919c6e5e492bc22beb80abb64e6fcc7e8744dc696e8388b8c977767afa4b",
+      "size": 34363285
+    }
+  }
+}

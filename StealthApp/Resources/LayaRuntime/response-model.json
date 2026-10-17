@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "livecopilot-needs-response-e505137a5e1bfa83",
+  "runtime_pin_id": "laya-multilingual-20260921-1",
+  "context_tokens": 1024,
+  "question_sha256": "1608ff3d53fdee5ae71e0b2ff72f10bc465a90578f9602f280cd8e88aa8dc11b",
+  "acceptance_sha256": "437a3f12d5c9fcf6b41a40186f24f09f6fe95d871cba0da92625ac0dfa3037e4",
+  "integration_sha256": "3a6b5c299f7ac6559c07825698628be4da2b9185c48ce50c7c6c51e5755e9527",
+  "full_audio_audit_sha256": "a741cf5713911484537ec9638af61acdd2b709a070b4bad87b7e595fca711f73",
+  "files": {
+    "model.safetensors": "e505137a5e1bfa8392618c7f62e1733ed995deb66c2883882c0677150129ed9a",
+    "LICENSE": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+    "mlx_config.json": "23b3412c471ac7564e43d95650c6e18d46f33cd50fe2a53042abb399a6254dfd",
+    "FINETUNE-NOTICE.txt": "e3acf69fcf029d040ed4e2e385bb1f7d60beebedd20d75e9f617c04ac7ed4462",
+    "NOTICE": "f23ae8ae701f5a43e186182e387aeef00b666daed18a946fc7c9ea827b00a8fa",
+    "rl_agent_config.json": "bc67064053fdf321be02bfe045745cd61929b3b151c2d83b174cbc9d2894909d",
+    "encoder/config.json": "01818c138acbaa64583a4a3f1fcf75ec22a4c103288d51c7fb6562baca049281",
+    "tokenizer/tokenizer_config.json": "e5e210187e4f3ed501a718bf929027ba6fb2890404a9ea35240e7e05e805b4e3",
+    "tokenizer/tokenizer.json": "dbba919c6e5e492bc22beb80abb64e6fcc7e8744dc696e8388b8c977767afa4b"
+  }
+}

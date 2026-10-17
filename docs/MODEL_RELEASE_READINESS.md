@@ -1,6 +1,6 @@
 # Model release readiness — 2026-10-17
 
-This is a preparation check, not a publication receipt. No model upload or public release was performed as part of this check.
+The accepted response checkpoint was uploaded on 2026-10-17. Application publication and notarization are recorded separately in the release validation report.
 
 ## Accepted fine-tuned Laya checkpoint
 
@@ -12,15 +12,18 @@ The locally installed app and integration checkout use:
 - Context budget: 1,024 tokens.
 - Resource locations: `StealthApp/Resources/LayaRuntime/ResponseModel/` and `response-model.json`.
 
-These resources are currently untracked local packaging inputs. `worker.py` validates the receipt, prompt hash, runtime pin, paths, and every file hash before using the bundled checkpoint. If both resources are absent it uses the downloaded upstream model; a partially present or incompatible checkpoint is an error. Therefore a successful clean build alone does **not** prove that the accepted checkpoint is included.
+### Immutable distribution and build checks
 
-The public ModelScope API reported the account repository's `laya/model/model.safetensors` as 643,835,426 bytes with SHA-256 `7fc5834af4d8fdfb268d272a9d1a66e5819a0daac98241651c4c888cc43adff1`. This differs from the accepted checkpoint. The existing release download remains pinned to revision `a5ba0b9be08e7d8f7438e3762791ac5b62c1e253`.
+- Repository: `careybk/livecopilot-model-assets`.
+- Directory: `laya/response/v2.5.0`.
+- Revision: `32a060912987d9823a1e3d1f4c573f21ca581a39`.
+- Receipt SHA-256: `f88d0668265188a12630a3beed24ed142700699dd6284af63338cafc07436566`.
+- Weight size: 643,835,426 bytes.
+- Source manifest: `StealthApp/Resources/LayaRuntime/response-model-source.json`.
 
-### Required release decision
+`build.sh` fetches all checkpoint files by immutable URL and verifies sizes and hashes before promoting the complete model directory. The small acceptance receipt is tracked; large downloaded files are ignored. Packaging independently checks the final app bundle. A missing, partial, substituted or damaged checkpoint blocks publication.
 
-For the current bundled-checkpoint design, a ModelScope upload is not required for end users to receive the checkpoint, **provided** release packaging explicitly stages and verifies the accepted files before signing. A durable, pinned model artifact is still needed for reproducible builds. Uploading the fine-tuned model as a separately versioned ModelScope artifact is recommended; retain upstream LICENSE/NOTICE, add the fine-tuning notice, include tokenizer/configuration files and receipt, and verify remote hashes. Do not overwrite the old pinned model.
-
-If the goal is to download the fine-tuned model separately rather than bundle it, uploading alone is insufficient: update runtime download pins, installation/receipt checks, and the worker's selection path, then test a fresh installation and an upgrade. Preserve the existing base/runtime path until that migration is verified.
+The worker retains its runtime-pin, prompt, context-budget and file-hash checks. The old upstream model at revision `a5ba0b9be08e7d8f7438e3762791ac5b62c1e253` remains available to existing clients; it was not overwritten. The new app bundles the accepted response checkpoint while retaining the existing Python/runtime installation path. Uploading does not change old clients' model selection.
 
 ## Zipformer
 
@@ -39,7 +42,7 @@ Zipformer is not mirrored in `careybk/livecopilot-model-assets` at the checked r
 
 ## Packaging checklist
 
-The latest GitHub Release was verified as `v2.3.0` (published 2026-10-12). The integration source still declares `MARKETING_VERSION = 2.3.0`; a new public update needs a new version.
+The latest GitHub Release was verified as `v2.3.0` (published 2026-10-12). The integration source now declares `MARKETING_VERSION = 2.5.0`.
 
 1. Select the next public version in `StealthApp/Version.xcconfig`; do not reuse 2.3.0 for a new public update.
 2. Make the accepted response-model artifact reproducibly available to the clean packaging checkout and verify its receipt/hashes.
