@@ -74,8 +74,8 @@ final class HistoryTests: XCTestCase {
         var record = SessionRecord(startedAt: at, endedAt: at.addingTimeInterval(500), lines: (0..<100).map { .init(from: .init(speaker: .room, at: at.addingTimeInterval(Double($0)), content: "合成缓存讨论 " + String(repeating: "样本", count: 1000))) })
         record.answers = [answer(at)]
         let request = SessionNaming.request(for: record)
-        XCTAssertLessThanOrEqual(record.namingInput.count, 3612)
-        XCTAssertFalse(request.input.contains("Synthetic cache hit")); XCTAssertTrue(request.sources.isEmpty)
+        XCTAssertLessThanOrEqual(record.namingInput.count, 45000)
+        XCTAssertTrue(request.input.contains("Synthetic cache hit")); XCTAssertTrue(request.sources.isEmpty)
         XCTAssertTrue(request.instructions.contains("untrusted")); XCTAssertFalse(request.instructions.contains("spoken interview"))
         let title = try await SessionNaming.generate(for: record, provider: TitleProvider())
         XCTAssertEqual(title, "缓存优化讨论")
@@ -84,6 +84,20 @@ final class HistoryTests: XCTestCase {
         do { _ = try await SessionNaming.generate(for: record, provider: TitleProvider(delay: 10_000_000_000), timeout: 10_000_000); XCTFail("Timeout accepted") } catch {}
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
         XCTAssertNil(SessionNaming.clean("  ")); XCTAssertNil(SessionNaming.clean(String(repeating: "a", count: 81)))
+    }
+    @MainActor func testNamingKeepsPairedAnswersAndEvidenceWithoutChangingHistory() throws {
+        let at = Date()
+        var record = SessionRecord(startedAt: at, endedAt: at, lines: [])
+        record.answers = [answer(at, text: "青松缓存项目采用灰度发布，错误率超过百分之一回滚 [S1]")]
+        let original = record
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(record.namingInput.utf8)) as? [String: Any])
+        let turns = try XCTUnwrap(payload["turns"] as? [[String: Any]])
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns[0]["answer"] as? String, record.answers?.first?.text)
+        XCTAssertTrue(record.namingInput.contains("Synthetic cache hit"))
+        XCTAssertEqual(record, original)
+        XCTAssertTrue(SessionNaming.request(for: record).instructions.contains("TITLE ONLY"))
+        XCTAssertTrue(SessionNaming.request(for: record).instructions.contains("ambiguous"))
     }
     @MainActor func testCoordinatorKeepsMultipleAnswersAndLateCompletion() async throws {
         let suite = "HistoryCoordinator-" + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!

@@ -129,11 +129,33 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return "LiveCopilot-" + formatter.string(from: startedAt) + ".txt"
     }
-    /// Bounded, evenly sampled transcript/questions. Never includes knowledge excerpts or credentials.
+    /// Preserve paired question/answer/evidence context; sample long sessions evenly.
     var namingInput: String {
-        let values = (lines.map { ($0.at, $0.content) } + (answers ?? []).map { ($0.createdAt, $0.question) }).sorted { $0.0 < $1.0 }.map(\.1)
-        guard !values.isEmpty else { return "" }
-        let count = min(12, values.count)
-        return (0..<count).map { i in String(values[count == 1 ? 0 : i * (values.count - 1) / (count - 1)].prefix(300)) }.joined(separator: "\n")
+        func sample<T>(_ values: [T], limit: Int) -> [T] {
+            guard values.count > limit else { return values }
+            return (0..<limit).map { values[$0 * (values.count - 1) / (limit - 1)] }
+        }
+        func clipped(_ value: String, _ limit: Int) -> String {
+            value.count <= limit ? value : String(value.prefix(limit)) + " [truncated]"
+        }
+        let turns = (answers ?? []).sorted { $0.createdAt < $1.createdAt }
+        let pairedFragments = Set(turns.compactMap(\.sourceFragmentID))
+        let unpaired = lines.filter { Set($0.fragmentIDs ?? []).isDisjoint(with: pairedFragments) }
+        let payload: [String: Any] = [
+            "turns": sample(turns, limit: 8).map { answer -> [String: Any] in
+                ["question": clipped(answer.question, 600),
+                 "answer": clipped(answer.text, 2400),
+                 "state": answer.state,
+                 "citedEvidence": answer.sources.prefix(2).map { source in
+                     ["reference": "S\(source.index)", "document": clipped(source.documentName, 160),
+                      "excerpt": clipped(source.excerpt, 600)]
+                 }]
+            },
+            "otherSpeech": sample(unpaired, limit: 8).map { clipped($0.content, 400) }
+        ]
+        guard !turns.isEmpty || !unpaired.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return "" }
+        return text
     }
 }

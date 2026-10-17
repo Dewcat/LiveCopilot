@@ -8,7 +8,7 @@ The installed-version source baseline (including the accepted V23 Laya runtime) 
 - Green room speech, blue nearby speech, separate manual/recognized questions and Markdown answers. Evidence/notes and knowledge citations are collapsible.
 - Optional schema-v2 JSON fields preserve questions, separate answers, lifecycle timestamps, warnings/errors, source fragment IDs and citation excerpts (no embedding vectors). Legacy files decode without rewriting or inventing answers. Stable ASR revisions retain their original fragments while updating one final transcript line. Archival storage is not truncated by the 400-line live UI limit.
 - Answer completion after voice stop updates that answer's archived session. Async title/answer results never recreate deleted sessions. Failed saves prevent clearing the current session.
-- Voice-session end invokes the selected analysis provider once for a title, using at most 12 evenly sampled 300-character transcript/question excerpts, no knowledge excerpts. A 30-second deadline and invalid-title checks retain the local preview on failure. Old sessions are not retrospectively sent to the API. Manual-only sessions use their question preview.
+- Voice-session end invokes the selected analysis provider once for a title, using paired questions, answers and already-cited evidence. Normal short sessions retain the complete pairs; long sessions sample up to 8 turns evenly (question 600, answer 2400, two cited excerpts of 600 characters each) plus up to 8 unpaired speech excerpts of 400 characters. Naming instructions correct evidence-supported ASR homophones in the title only and omit ambiguous names. A 30-second deadline and invalid-title checks retain the local preview on failure. Old sessions are not retrospectively sent to the API. Manual-only sessions use their question preview.
 - Local model download performs checksum plus real loading/inference, with manual self-check, privacy-conscious copyable diagnostics and stage-specific recovery instructions. Embedding contexts start smaller and fall back to CPU when GPU initialization fails.
 - The three overlay settings rows now share typography, spacing and separators.
 
@@ -39,3 +39,14 @@ The reported users' hardware and logs remain unknown. The fixes improve diagnosi
 - `/tmp/history-ui-export.md`
 - `/tmp/history-signing-final.log`, `/tmp/history-install-dry-run.json`, `/tmp/history-install.log`
 - `/tmp/livecopilot-pre-history-backup/data-sha256.json`
+
+
+## 2026-10-17: evidence-aware title acceptance
+
+Installed signed build 20261017.062542. Release HistoryTests: 8 passed, 1 conditional live-API test skipped; no failures. Laya worker, configuration and model weights match the previously installed version byte-for-byte.
+
+Actual speaker-to-microphone, Zipformer, Laya and configured analysis API flow (no mock injection): two spoken questions produced ASR mistakes including “轻松短存” and “规律发布”. Answers identified the synthetic “青松缓存” project and “灰度发布” using the imported test document. On stop, the app generated **青松缓存项目验收数据与灰度发布安排** automatically.
+
+Session `55E48594-2A54-4357-83EC-77139D49D789` retained two completed answers, their original question text, timestamps and citation snapshots (3 and 1 respectively). Existing session files were unchanged. After normal quit, verified process exit, and relaunch, the installed history UI restored the corrected title and both turns. The session JSON remained byte-identical: SHA256 `ae8f103828c8a7291761dd46fea66a5a0dc4d7fbfed94f0551a7564ab2ed5be6`.
+
+This verifies correction on the observed case, not universal ASR correction. The original speech and answers are never rewritten; long sessions have bounded sampling and ambiguous terms may be omitted. Test artifacts: `/tmp/livecopilot-naming-acceptance/`, build log `/tmp/naming-refinement-build.log`.
