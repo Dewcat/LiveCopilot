@@ -435,6 +435,10 @@ struct SettingsView: View {
     private var analysisService: some View {
         VStack(alignment: .leading, spacing: 18) {
             OnboardingAnswerConfiguration(coordinator: coordinator)
+            if (try? coordinator.settings.analysisCredentialReference()) != nil {
+                CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI, analysisLayout: true)
+                    .id(try? coordinator.settings.analysisCredentialReference().account)
+            }
             SettingsSection {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle(b("Chinese / English sentence pairs", "中英逐句对照"), isOn: $coordinator.settings.bilingualAnswers)
@@ -455,10 +459,6 @@ struct SettingsView: View {
                     }.font(.caption).foregroundStyle(.secondary)
                 }.padding(10)
             } label: { Text(b("Answer style", "回答风格")) }
-            if (try? coordinator.settings.analysisCredentialReference()) != nil {
-                CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI, analysisLayout: true)
-                    .id(try? coordinator.settings.analysisCredentialReference().account)
-            }
         }
     }
     private var customService: some View {
@@ -715,27 +715,30 @@ private struct LocalModelCard: View {
                 Text(language == .english ? "Download is queued and will start automatically after the current model." : "已加入下载队列，当前模型完成后会自动开始。")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Button(t(manager.installed.contains(kind) ? "Download again" : "Download model")) { copiedDiagnostics = false; manager.install(kind) }
-                    .disabled(locked || manager.downloading != nil).accessibilityIdentifier("download-" + kind.rawValue)
-                if manager.installed.contains(kind) {
-                    Button(language == .english ? "Run self-check" : "运行自检") { copiedDiagnostics = false; manager.runSelfCheck(kind) }
-                        .disabled(locked || manager.downloading != nil).accessibilityIdentifier("selfcheck-" + kind.rawValue)
-                    Button(language == .english ? "Delete local model…" : "删除本地模型…", role: .destructive) { confirmRemoval = true }
-                        .disabled(locked || manager.downloading != nil)
-                        .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
-                            Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
-                        } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
+                HStack(spacing: 10) {
+                    Button(t(manager.installed.contains(kind) ? "Download again" : "Download model")) { copiedDiagnostics = false; manager.install(kind) }
+                        .disabled(locked || manager.downloading != nil).accessibilityIdentifier("download-" + kind.rawValue)
+                    if manager.installed.contains(kind) {
+                        Button(language == .english ? "Run self-check" : "运行自检") { copiedDiagnostics = false; manager.runSelfCheck(kind) }
+                            .disabled(locked || manager.downloading != nil).accessibilityIdentifier("selfcheck-" + kind.rawValue)
+                        Button(language == .english ? "Delete local model…" : "删除本地模型…", role: .destructive) { confirmRemoval = true }
+                            .foregroundStyle(.red)
+                            .disabled(locked || manager.downloading != nil)
+                            .confirmationDialog(language == .english ? "Delete this local model?" : "删除此本地模型？", isPresented: $confirmRemoval) {
+                                Button(language == .english ? "Delete" : "删除", role: .destructive, action: remove)
+                            } message: { Text(language == .english ? "Download again to use it. Knowledge documents, indexes and settings are retained." : "下次使用需要重新下载。知识库文档、索引和设置均保留。") }
+                    }
                 }
                 if manager.downloading == nil, manager.messageKind == kind, !manager.message.isEmpty { Text(t(manager.message)).font(.caption).foregroundStyle(.secondary) }
             }
             if let report = manager.health[kind] {
-                Text(report.advice(english: language == .english))
-                    .font(.caption).foregroundStyle(report.ready ? Color.secondary : Color.orange)
-                    .accessibilityIdentifier("selfcheck-result-" + kind.rawValue)
                 Button(copiedDiagnostics ? (language == .english ? "Copied" : "已复制") : (language == .english ? "Copy diagnostics" : "复制诊断信息")) {
                     NSPasteboard.general.clearContents()
                     copiedDiagnostics = NSPasteboard.general.setString(report.diagnostic(kind: kind), forType: .string)
                 }.accessibilityIdentifier("copy-diagnostics-" + kind.rawValue)
+                Text(report.advice(english: language == .english))
+                    .font(.caption).foregroundStyle(report.ready ? Color.secondary : Color.orange)
+                    .accessibilityIdentifier("selfcheck-result-" + kind.rawValue)
                 Text(language == .english ? "Includes device, app version and self-check results. No documents or API keys." : "仅包含设备、应用版本和自检结果，不含文档内容或 API Key。")
                     .font(.caption).foregroundStyle(.secondary)
             }
