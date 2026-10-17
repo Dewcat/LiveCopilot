@@ -140,10 +140,12 @@ struct SettingsView: View {
                     }.pickerStyle(.segmented).accessibilityIdentifier("window-background")
                     Text(t(coordinator.settings.background.detail)).font(.caption).foregroundStyle(.secondary)
                     Divider()
-                    fontSizeControl(b("Transcript text", "流式识别区字号"), value: $coordinator.settings.transcriptFontSize, identifier: "transcript-font-size",
-                                    preview: b("What was your role in this project?", "你在这个项目中具体负责什么？"))
-                    fontSizeControl(b("Answer text", "回答区字号"), value: $coordinator.settings.answerFontSize, identifier: "answer-font-size",
-                                    preview: b("I would start with the goal, then explain the approach.", "我会先说明目标，再介绍具体的方法。"))
+                    HStack(alignment: .top, spacing: 24) {
+                        fontSizeControl(b("Transcript text", "流式识别区字号"), value: $coordinator.settings.transcriptFontSize, identifier: "transcript-font-size",
+                                        preview: b("What was your role in this project?", "你在这个项目中具体负责什么？"))
+                        fontSizeControl(b("Answer text", "回答区字号"), value: $coordinator.settings.answerFontSize, identifier: "answer-font-size",
+                                        preview: b("I would start with the goal, then explain the approach.", "我会先说明目标，再介绍具体的方法。"))
+                    }
                     Text(b("Text sizes are independent and take effect immediately. The window reflows; longer content scrolls.", "两处字号独立保存、即时生效；窗口会重新排版，较长的内容可滚动阅读。")).font(.caption).foregroundStyle(.secondary)
                 }.padding(10)
             } label: { Label(t("Language & appearance"), systemImage: "paintpalette") }
@@ -525,7 +527,7 @@ struct SettingsView: View {
             Slider(value: value, in: OverlayTypography.range, step: 1)
                 .accessibilityLabel(title).accessibilityIdentifier(identifier + "-slider")
             Text(preview).font(.system(size: value.wrappedValue)).fixedSize(horizontal: false, vertical: true)
-        }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private func modelField(_ title: String, value: Binding<String>, prompt: String? = nil) -> some View {
         HStack {
