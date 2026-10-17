@@ -63,8 +63,8 @@ struct SettingsView: View {
             }.padding(page == .history ? 16 : 26).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 820, idealWidth: 860, minHeight: 610, idealHeight: 680)
-        .background { WindowBackgroundView(style: coordinator.settings.background).ignoresSafeArea() }
-        .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
+        .background { WindowBackgroundView(style: .white).ignoresSafeArea() }
+        .preferredColorScheme(.light)
         .toggleStyle(TrailingSwitchStyle())
         .environment(\.locale, coordinator.settings.language.locale)
         .onAppear { loadCustomDraft() }
@@ -133,7 +133,7 @@ struct SettingsView: View {
                     }.accessibilityIdentifier("interface-language")
                     Text(t("Changes apply immediately. Set the answer language separately in the floating panel.")).font(.caption).foregroundStyle(.secondary)
                     Divider()
-                    Picker(t("Window background"), selection: $coordinator.settings.background) {
+                    Picker(t("Floating window background"), selection: $coordinator.settings.background) {
                         ForEach(AppBackground.allCases) { background in
                             Text(t(background.label)).tag(background)
                         }

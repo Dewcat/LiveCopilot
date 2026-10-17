@@ -7,7 +7,7 @@ struct HistoryView: View {
     var body: some View {
         HistoryBrowser(sessions: coordinator.sessions, english: coordinator.settings.language == .english,
                        rename: coordinator.renameSession, regenerate: coordinator.regenerateSessionTitle)
-            .preferredColorScheme(coordinator.settings.background.usesLightAppearance ? .light : nil)
+            .preferredColorScheme(.light)
             .environment(\.locale, coordinator.settings.language.locale)
     }
 }

@@ -12,7 +12,7 @@ final class OverlayWindow: NSPanel {
     private var inputCaptureProtection: OverlayInputCaptureProtection?
     private var cursorProtection: OverlayCursorProtection?
     private var captureProtectionReady = false
-    private var excludesCapture = true
+    private var excludesCapture = false
     private var captureGeometryRefresh: DispatchWorkItem?
     var onCaptureProtectionChanged: ((WindowCaptureProtection.Status) -> Void)?
     var captureProtectionStatus: WindowCaptureProtection.Status { captureProtection.status }
@@ -43,8 +43,8 @@ final class OverlayWindow: NSPanel {
         minSize = NSSize(width: 400, height: 240)
         maxSize = NSSize(width: 700, height: 1000)
 
-        // --- Stealth: stay out of screen capture ---
-        sharingType = .none
+        // Capture exclusion is opt-in and applied from saved preferences.
+        sharingType = .readOnly
 
         // --- Always-on-top across every Space, including over fullscreen apps ---
         level = .floating
@@ -80,6 +80,8 @@ final class OverlayWindow: NSPanel {
         refreshCaptureProtection()
         inputCaptureProtection = OverlayInputCaptureProtection(overlay: self)
         cursorProtection = OverlayCursorProtection(window: self)
+        inputCaptureProtection?.setEnabled(excludesCapture)
+        cursorProtection?.setEnabled(excludesCapture)
     }
 
     func setCaptureExcluded(_ enabled: Bool) {

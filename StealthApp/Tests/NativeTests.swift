@@ -393,6 +393,19 @@ final class NativeTests: XCTestCase {
         XCTAssertEqual(SecKeychainGetUserInteractionAllowed(&after), errSecSuccess)
         XCTAssertEqual(before.boolValue, after.boolValue)
     }
+    func testCaptureAndBackgroundDefaultsPreserveExplicitPreferences() throws {
+        XCTAssertFalse(AppSettings().excludeOverlayFromCapture)
+        XCTAssertEqual(AppSettings().background, .glass)
+        let missing = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        XCTAssertFalse(missing.excludeOverlayFromCapture)
+        XCTAssertEqual(missing.background, .glass)
+        var explicit = AppSettings()
+        explicit.excludeOverlayFromCapture = true
+        explicit.background = .white
+        let restored = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(explicit))
+        XCTAssertTrue(restored.excludeOverlayFromCapture)
+        XCTAssertEqual(restored.background, .white)
+    }
     func testCoreAcceptanceChecks() async throws {
         let checks = try await CoreChecks.run()
         XCTAssertGreaterThanOrEqual(checks.count, 25)

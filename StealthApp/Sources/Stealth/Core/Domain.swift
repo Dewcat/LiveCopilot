@@ -53,7 +53,7 @@ struct AppSettings: Codable, Equatable {
     var overlayAutoHeight = true
     var overlayEdgeHide = true
     var showMenuBarIcon = true
-    var excludeOverlayFromCapture = true
+    var excludeOverlayFromCapture = false
     var reasoningService = ReasoningService.sharedOpenAI
     var transcriptFontSize = 12.0
     var answerFontSize = 14.0

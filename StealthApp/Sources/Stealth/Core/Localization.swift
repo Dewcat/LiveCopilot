@@ -208,7 +208,7 @@ enum L10n {
         "Interface language": "界面语言",
         "Follow system": "跟随系统",
         "Changes apply immediately. Set the answer language separately in the floating panel.": "立即生效；回答语言请在悬浮窗中单独设置。",
-        "Window background": "窗口底色",
+        "Floating window background": "悬浮窗底色",
         "Floating window": "悬浮窗",
         "Fit window height to content": "根据内容自动调整高度",
         "Stay compact when empty, grow with captions and answers, then scroll at the screen limit. Drag a vertical edge to switch to manual sizing.": "空白时保持紧凑，随转写和回答向下展开；达到屏幕高度后滚动。拖动上下边缘可切换为手动尺寸。",
