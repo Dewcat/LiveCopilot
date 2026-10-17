@@ -21,9 +21,9 @@ Use `$RELEASE_TAG` for the GitHub Release tag and the versioned Hong Kong direct
 
 ## Fine-tuned Laya packaging gate
 
-The accepted 2.5.0 response checkpoint is published at an immutable ModelScope revision. `build.sh` runs `prepare-response-model.py` before compiling: it downloads the ignored `ResponseModel/` directory, checks every size/SHA-256 against the tracked source manifest and acceptance receipt, and promotes it only after full verification. Existing mismatched files fail closed rather than being overwritten. For direct Xcode builds, run `python3 StealthApp/scripts/prepare-response-model.py` first.
+The release app contains only Laya code, immutable download pins and the small acceptance receipt. **Never bundle `LayaRuntime/ResponseModel/` or other large model weights.** Users explicitly download the accepted model through onboarding or Services. The installer checks every file, prepares an isolated version and switches the current installation atomically; an older runtime ID is not reported as the current model.
 
-`package-dmg.sh` independently verifies the actual app's bundled model and receipt. An app without the accepted checkpoint cannot pass packaging. See [model release readiness](MODEL_RELEASE_READINESS.md) for the revision, provenance and previous-model compatibility.
+`build.sh` and `package-dmg.sh` run `prepare-response-model.py --distribution-only`. This validates the pinned ModelScope revision, accepted file sizes/hashes and runtime compatibility, and rejects bundled weights or unexpectedly large Laya resources. A clean checkout can build the small installer without downloading Laya. For isolated download verification only, use `prepare-response-model.py --resource-dir /tmp/laya-validation`; this is not a packaging input. See [model release readiness](MODEL_RELEASE_READINESS.md).
 
 ## Developer ID release (1.4.1 and later)
 

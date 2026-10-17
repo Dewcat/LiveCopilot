@@ -208,6 +208,7 @@ enum L10n {
         "Interface language": "界面语言",
         "Follow system": "跟随系统",
         "Changes apply immediately. Set the answer language separately in the floating panel.": "立即生效；回答语言请在悬浮窗中单独设置。",
+        "A newer Laya model is required. Download it here; your previous files are retained until the update is verified.": "需要新版 Laya 模型。请在此下载；更新校验完成前会保留原有文件。",
         "Floating window background": "悬浮窗底色",
         "Floating window": "悬浮窗",
         "Fit window height to content": "根据内容自动调整高度",

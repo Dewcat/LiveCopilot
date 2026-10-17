@@ -177,23 +177,28 @@ def verify_installation(path):
 
 
 def model_path(installation, resources, installation_receipt):
-    """A signed local build may carry an independently pinned task checkpoint.
+    """Verify the accepted downloaded checkpoint; never silently use an old model.
 
-    The downloaded upstream installation stays intact for rollback. An incomplete
-    or incompatible bundled checkpoint is an error, never a silent base fallback.
+    Explicit local research bundles remain supported, but release packaging rejects
+    their large weights. Installation switches preserve previous versions on disk.
     """
     manifest = resources / "response-model.json"
     model = resources / "ResponseModel"
     if not manifest.exists() and not model.exists():
         return installation / "model"
     receipt = strict_loads(manifest.read_bytes())
+    if not model.exists():
+        pins = strict_loads((resources / "pins.json").read_bytes())
+        if installation_receipt.get("pin_id") != pins.get("id"):
+            raise ValueError("response_model_update_required")
+        model = installation / "model"
     question_sha = hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     required = {"model.safetensors", "rl_agent_config.json", "mlx_config.json",
                 "encoder/config.json", "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json"}
     files = receipt.get("files")
     if (model.is_symlink() or receipt.get("schema") != 1 or receipt.get("context_tokens") != CONTEXT_TOKENS
             or receipt.get("question_sha256") != question_sha
-            or receipt.get("runtime_pin_id") != installation_receipt.get("pin_id")
+            or receipt.get("runtime_pin_id") != installation_receipt.get("runtime_pin_id", installation_receipt.get("pin_id"))
             or not isinstance(files, dict) or not required.issubset(files)):
         raise ValueError("invalid_response_model")
     root = model.resolve(strict=True)

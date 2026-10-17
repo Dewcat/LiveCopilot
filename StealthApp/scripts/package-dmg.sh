@@ -38,7 +38,7 @@ git diff --quiet "$APP_SOURCE_REF" "$RELEASE_COMMIT" -- \
   StealthApp/Sources StealthApp/Resources StealthApp/Native StealthApp/scripts/build-local-runtime.sh StealthApp/scripts/prepare-sparkle.sh StealthApp/scripts/build.sh StealthApp/scripts/prepare-response-model.py StealthApp/project.yml StealthApp/Version.xcconfig || {
   echo "App inputs changed since --app-source-ref. Build a new app instead." >&2; exit 1;
 }
-python3 StealthApp/scripts/prepare-response-model.py --verify-only --resource-dir "$APP_PATH/Contents/Resources/LayaRuntime"
+python3 StealthApp/scripts/prepare-response-model.py --distribution-only --resource-dir "$APP_PATH/Contents/Resources/LayaRuntime"
 python3 StealthApp/scripts/release-version.py --check-app "$APP_PATH"
 python3 StealthApp/scripts/sign-distribution.py "$APP_PATH" --verify-only
 xcrun stapler validate "$APP_PATH"

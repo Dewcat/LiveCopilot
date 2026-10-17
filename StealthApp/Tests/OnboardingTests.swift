@@ -147,9 +147,9 @@ final class OnboardingTests: XCTestCase {
         var inventory = OnboardingSetupInventory()
         var setup = OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory)
         XCTAssertEqual(setup.resources.map(\.kind), [.local(.streamingSpeech), .local(.embedding), .laya])
-        XCTAssertEqual(setup.knownBytes, 1_639_227_742)
+        XCTAssertEqual(setup.knownBytes, 1_639_207_344)
         XCTAssertEqual(setup.unknownSizeCount, 0)
-        XCTAssertEqual(setup.resources.last?.bytes, 766_827_627, "Include Python, wheels, source and model assets from bundled pins")
+        XCTAssertEqual(setup.resources.last?.bytes, 766_807_229, "Include Python, wheels, source and model assets from bundled pins")
         inventory.layaDownloadBytes = nil
         XCTAssertEqual(OnboardingSetupSnapshot(settings: settings, state: state, inventory: inventory).unknownSizeCount, 1, "Missing manifests must not invent a size")
         inventory.downloading = .streamingSpeech; inventory.queued = [.embedding]

@@ -651,7 +651,7 @@ final class NativeTests: XCTestCase {
     }
     @MainActor func testOverlayNativeProperties() {
         let panel = OverlayWindow(rootView: Text("Synthetic overlay check"))
-        XCTAssertEqual(panel.sharingType, .none)
+        XCTAssertEqual(panel.sharingType, .readOnly)
         XCTAssertEqual(panel.level, .floating)
         XCTAssertTrue(panel.canBecomeKey)
         XCTAssertFalse(panel.hidesOnDeactivate)

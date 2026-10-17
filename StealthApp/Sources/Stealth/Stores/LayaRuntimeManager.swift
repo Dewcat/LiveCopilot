@@ -30,6 +30,9 @@ final class LayaRuntimeManager: ObservableObject {
         self.resources = resources ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("LayaRuntime")
         if !Self.supported { state = .unsupported; message = "Laya requires Apple Silicon and macOS 14 or newer." }
         else if isInstalled { state = .installed; message = "Laya is installed. Load it to enable offline detection." }
+        else if FileManager.default.fileExists(atPath: root.appendingPathComponent("current/receipt.json").path) {
+            message = "A newer Laya model is required. Download it here; your previous files are retained until the update is verified."
+        }
     }
     private static var supported: Bool {
         #if arch(arm64)
@@ -41,7 +44,7 @@ final class LayaRuntimeManager: ObservableObject {
     func prepare() { begin(download: false) }
     /// Re-hash the installed files and run a fresh local warmup; never downloads.
     func checkModel() { begin(download: false, reload: true) }
-    /// The worker verifies this bundled checkpoint before publishing ready.
+    /// The worker verifies the accepted downloaded checkpoint before publishing ready.
     var checkpointID: String? {
         if let data = try? Data(contentsOf: resources.appendingPathComponent("response-model.json")),
            let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

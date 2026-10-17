@@ -3,6 +3,9 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +15,19 @@ spec.loader.exec_module(module)
 
 
 class ResponseDownloadTests(unittest.TestCase):
+    def test_distribution_rejects_bundled_weights_and_substituted_pins(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ['response-model.json', 'pins.json']:
+                shutil.copy2(module.RESOURCE / name, root / name)
+            command = [sys.executable, str(Path(module.__file__)), '--distribution-only', '--resource-dir', str(root)]
+            self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            (root / 'ResponseModel').mkdir()
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+            (root / 'ResponseModel').rmdir()
+            (root / 'pins.json').write_text('{}')
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0)
+
     def test_real_manifest_matches_accepted_receipt(self):
         self.assertEqual(module.manifest()['revision'], '32a060912987d9823a1e3d1f4c573f21ca581a39')
 

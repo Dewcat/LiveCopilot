@@ -14,16 +14,16 @@ class DownloadTests(unittest.TestCase):
     def test_file_count_event_matches_pinned_install_plan(self):
         pins = json.loads((Path(__file__).parents[1] / 'Resources/LayaRuntime/pins.json').read_text())
         total = 2 + len(pins['wheels']) + len(pins['model'])
-        self.assertEqual(total, 32)
+        self.assertEqual(total, 30)
         events = []
         with patch.object(module, 'output', events.append):
             module.announce_file(1, total)
             module.announce_file(len(pins['wheels']) + 2, total)
             module.announce_file(len(pins['wheels']) + 2 + len(pins['model']), total)
         self.assertEqual(events, [
-            {'file_index': 1, 'file_total': 32},
-            {'file_index': 21, 'file_total': 32},
-            {'file_index': 32, 'file_total': 32},
+            {'file_index': 1, 'file_total': 30},
+            {'file_index': 21, 'file_total': 30},
+            {'file_index': 30, 'file_total': 30},
         ])
     def test_modelscope_precedes_both_fallbacks_without_credentials(self):
         module.SOURCE = 'distribution'; module.DISTRIBUTION_BASE = 'https://modelscope.cn/models/livecopilot/artifacts/resolve/master'

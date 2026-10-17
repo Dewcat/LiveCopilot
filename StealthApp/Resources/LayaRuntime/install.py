@@ -68,6 +68,9 @@ MODEL_NAMES = set()
 
 
 def candidates(url, item=None):
+    # Accepted response artifacts exist only at this immutable ModelScope source.
+    if item and urlsplit(url).hostname == 'modelscope.cn':
+        return [url]
     if SOURCE in ('oss', 'distribution') and DISTRIBUTION_BASE and item:
         key = '/'.join(quote(part, safe='') for part in oss_key(item).split('/'))
         return [DISTRIBUTION_BASE.rstrip('/') + '/' + key] + fallback_candidates(url)
@@ -283,7 +286,7 @@ def install(root, resources):
             emit('verifying', 0.97)
             files = {str(p.relative_to(location)): digest(p)
                      for base in ('source', 'model') for p in (location / base).rglob('*') if p.is_file()}
-            (location / 'receipt.json').write_text(json.dumps({'schema': 1, 'pin_id': pins['id'], 'files': files}))
+            (location / 'receipt.json').write_text(json.dumps({'schema': 1, 'pin_id': pins['id'], 'runtime_pin_id': pins.get('runtime_id', pins['id']), 'files': files}))
             # venv paths remain stable. Switch current only after all verified resources exist.
             link = root / ('current-' + uuid.uuid4().hex)
             link.symlink_to(location.relative_to(root), target_is_directory=True)

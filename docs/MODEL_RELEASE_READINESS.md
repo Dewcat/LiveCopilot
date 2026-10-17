@@ -10,7 +10,7 @@ The locally installed app and integration checkout use:
 - Receipt ID: `livecopilot-needs-response-e505137a5e1bfa83`.
 - Runtime pin: `laya-multilingual-20260921-1`.
 - Context budget: 1,024 tokens.
-- Resource locations: `StealthApp/Resources/LayaRuntime/ResponseModel/` and `response-model.json`.
+- Tracked acceptance receipt: `StealthApp/Resources/LayaRuntime/response-model.json`; downloaded weights live in application support, not the app bundle.
 
 ### Immutable distribution and build checks
 
@@ -21,9 +21,9 @@ The locally installed app and integration checkout use:
 - Weight size: 643,835,426 bytes.
 - Source manifest: `StealthApp/Resources/LayaRuntime/response-model-source.json`.
 
-`build.sh` fetches all checkpoint files by immutable URL and verifies sizes and hashes before promoting the complete model directory. The small acceptance receipt is tracked; large downloaded files are ignored. Packaging independently checks the final app bundle. A missing, partial, substituted or damaged checkpoint blocks publication.
+`build.sh` validates download metadata without fetching weights. Packaging rejects any bundled `ResponseModel/` directory and limits Laya resources to 2 MiB. The onboarding/Services installer downloads the nine accepted model files from this immutable ModelScope directory and verifies each SHA-256 before atomic installation.
 
-The worker retains its runtime-pin, prompt, context-budget and file-hash checks. The old upstream model at revision `a5ba0b9be08e7d8f7438e3762791ac5b62c1e253` remains available to existing clients; it was not overwritten. The new app bundles the accepted response checkpoint while retaining the existing Python/runtime installation path. Uploading does not change old clients' model selection.
+The new installation ID is `livecopilot-laya-response-2.5.0-e505137a5e1bfa83`; the underlying runtime compatibility ID remains `laya-multilingual-20260921-1`. Existing old installations are detected as needing the new model. The worker checks the new installation ID, acceptance prompt hash, context budget and all model file hashes; it cannot silently use the old checkpoint. Previous version directories remain on disk during installation. The old upstream ModelScope revision remains available for old clients and was not overwritten.
 
 ## Zipformer
 
@@ -45,7 +45,7 @@ Zipformer is not mirrored in `careybk/livecopilot-model-assets` at the checked r
 The latest GitHub Release was verified as `v2.3.0` (published 2026-10-12). The integration source now declares `MARKETING_VERSION = 2.5.0`.
 
 1. Select the next public version in `StealthApp/Version.xcconfig`; do not reuse 2.3.0 for a new public update.
-2. Make the accepted response-model artifact reproducibly available to the clean packaging checkout and verify its receipt/hashes.
-3. Validate model preparation, actual load/self-check, and the bundled response model from the final signed candidate.
+2. Validate immutable download metadata in a clean checkout; ensure the app contains no Laya weights.
+3. Validate model preparation, actual load/self-check, and the downloaded response model using the final signed candidate’s resources.
 4. Complete app/DMG notarization and ticket validation, then publish matching release notes and checksums.
 5. Mirror the identical finalized DMG, sign the Sparkle feed, and verify the real update flow. See [RELEASING.md](RELEASING.md).

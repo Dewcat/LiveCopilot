@@ -1,5 +1,5 @@
 {
-  "id": "laya-multilingual-20260921-1",
+  "id": "livecopilot-laya-response-2.5.0-e505137a5e1bfa83",
   "python": {
     "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-aarch64-apple-darwin-install_only_stripped.tar.gz",
     "sha256": "81a359f1cfadd4da11766534c5913791cea55f26e1bb902cacd2a531bb1e4b2b",
@@ -11,7 +11,7 @@
     "sha256": "ff21af147c7654f4347b59bd62733cea3b9a2490da66da3b20784509236f6a92",
     "size": 5796123
   },
-  "model_revision": "ba40c87fcb357f1643d04d71323af9cdc3b9e591",
+  "model_revision": "32a060912987d9823a1e3d1f4c573f21ca581a39",
   "wheels": [
     {
       "name": "anyio-4.15.1-py3-none-any.whl",
@@ -130,70 +130,59 @@
   ],
   "model": [
     {
+      "name": "model.safetensors",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/model.safetensors",
+      "sha256": "e505137a5e1bfa8392618c7f62e1733ed995deb66c2883882c0677150129ed9a",
+      "size": 643835426
+    },
+    {
       "name": "LICENSE",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/LICENSE",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/LICENSE",
       "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
       "size": 10173
     },
     {
+      "name": "mlx_config.json",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/mlx_config.json",
+      "sha256": "23b3412c471ac7564e43d95650c6e18d46f33cd50fe2a53042abb399a6254dfd",
+      "size": 172
+    },
+    {
+      "name": "FINETUNE-NOTICE.txt",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/FINETUNE-NOTICE.txt",
+      "sha256": "e3acf69fcf029d040ed4e2e385bb1f7d60beebedd20d75e9f617c04ac7ed4462",
+      "size": 204
+    },
+    {
       "name": "NOTICE",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/NOTICE",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/NOTICE",
       "sha256": "f23ae8ae701f5a43e186182e387aeef00b666daed18a946fc7c9ea827b00a8fa",
       "size": 698
     },
     {
-      "name": "README.md",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/README.md",
-      "sha256": "65fcbc0ff2a4a2d259f5ee14abcf2f8941e3ca0790fc4fa4b63d6401cbf798ce",
-      "size": 3676
+      "name": "rl_agent_config.json",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/rl_agent_config.json",
+      "sha256": "bc67064053fdf321be02bfe045745cd61929b3b151c2d83b174cbc9d2894909d",
+      "size": 3440
     },
     {
       "name": "encoder/config.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/encoder/config.json",
-      "sha256": "83f6916d13ef0f556ac461f28308dc2bffa7ebeadee8ec9e2db5812020ea5bb4",
-      "size": 1938
-    },
-    {
-      "name": "manifest.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/manifest.json",
-      "sha256": "babce5883ff7bd9b96ad9bd77bcbc5c89bf512f0e9bebd791f2050b8d21b245c",
-      "size": 1773
-    },
-    {
-      "name": "mlx_config.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/mlx_config.json",
-      "sha256": "20ec723e1365a268597cc7e8cd39495c5e2eb58311b925f8e8c165ec5855cc28",
-      "size": 316
-    },
-    {
-      "name": "model.safetensors",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/model.safetensors",
-      "sha256": "7fc5834af4d8fdfb268d272a9d1a66e5819a0daac98241651c4c888cc43adff1",
-      "size": 643835426
-    },
-    {
-      "name": "rl_agent_config.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/rl_agent_config.json",
-      "sha256": "9a669a70961064c3c6cc76d2afb8bc5fb10dcd8349bb66e5f7b9b1afb74440d5",
-      "size": 473
-    },
-    {
-      "name": "tokenizer/tokenizer.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/tokenizer/tokenizer.json",
-      "sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f",
-      "size": 34363188
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/encoder/config.json",
+      "sha256": "01818c138acbaa64583a4a3f1fcf75ec22a4c103288d51c7fb6562baca049281",
+      "size": 1939
     },
     {
       "name": "tokenizer/tokenizer_config.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/tokenizer/tokenizer_config.json",
-      "sha256": "6c6b2d8e3c84ce0e671c129cd6b374b235d6f9863042a5836358d00a89bbb5a1",
-      "size": 524
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/tokenizer/tokenizer_config.json",
+      "sha256": "e5e210187e4f3ed501a718bf929027ba6fb2890404a9ea35240e7e05e805b4e3",
+      "size": 772
     },
     {
-      "name": "validation.json",
-      "url": "https://huggingface.co/aac6fef/laya-multilingual-mlx/resolve/ba40c87fcb357f1643d04d71323af9cdc3b9e591/validation.json",
-      "sha256": "f64ef4e455afb2dc3d183f2bf0f2edfded8297e5573334caf462c2d89dab7966",
-      "size": 18322
+      "name": "tokenizer/tokenizer.json",
+      "url": "https://modelscope.cn/models/careybk/livecopilot-model-assets/resolve/32a060912987d9823a1e3d1f4c573f21ca581a39/laya/response/v2.5.0/ResponseModel/tokenizer/tokenizer.json",
+      "sha256": "dbba919c6e5e492bc22beb80abb64e6fcc7e8744dc696e8388b8c977767afa4b",
+      "size": 34363285
     }
-  ]
+  ],
+  "runtime_id": "laya-multilingual-20260921-1"
 }

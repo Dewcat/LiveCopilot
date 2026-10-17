@@ -89,4 +89,22 @@ class WorkerTests(unittest.TestCase):
             (model / 'model.safetensors').write_bytes(b'corrupt')
             with self.assertRaises(ValueError): worker.model_path(root, root, {'pin_id': 'base'})
 
+    def test_downloaded_checkpoint_rejects_old_revision_and_modified_weights(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); resources = root / 'resources'; resources.mkdir()
+            model = root / 'model'; files = {}
+            for name in ['model.safetensors', 'rl_agent_config.json', 'mlx_config.json',
+                         'encoder/config.json', 'tokenizer/tokenizer.json', 'tokenizer/tokenizer_config.json']:
+                path = model / name; path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'synthetic'); files[name] = hashlib.sha256(b'synthetic').hexdigest()
+            manifest = dict(schema=1, context_tokens=1024, runtime_pin_id='base', files=files,
+                            question_sha256=hashlib.sha256(json.dumps(worker.QUESTIONS, sort_keys=True, separators=(',', ':')).encode()).hexdigest())
+            (resources / 'response-model.json').write_text(json.dumps(manifest))
+            (resources / 'pins.json').write_text(json.dumps({'id':'new-response'}))
+            receipt = {'pin_id':'new-response', 'runtime_pin_id':'base'}
+            self.assertEqual(worker.model_path(root, resources, receipt), model)
+            with self.assertRaises(ValueError): worker.model_path(root, resources, {'pin_id':'base'})
+            (model / 'model.safetensors').write_bytes(b'old-model')
+            with self.assertRaises(ValueError): worker.model_path(root, resources, receipt)
+
 if __name__ == '__main__': unittest.main()

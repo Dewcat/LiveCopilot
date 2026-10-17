@@ -111,9 +111,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resource-dir', type=Path, default=RESOURCE)
     parser.add_argument('--verify-only', action='store_true')
+    parser.add_argument('--distribution-only', action='store_true')
     args = parser.parse_args()
     source = manifest()
-    if args.verify_only:
+    if args.distribution_only:
+        root = args.resource_dir
+        if (root / 'ResponseModel').exists() or (root / 'ResponseModel').is_symlink():
+            raise ValueError('Release must not bundle Laya weights; download them in onboarding')
+        pins = json.loads((root / 'pins.json').read_text())
+        if digest(root / 'response-model.json') != source['receipt_sha256']:
+            raise ValueError('Release acceptance receipt mismatch')
+        expected = {name: dict(name=name, url=source['base_url'] + 'ResponseModel/' + name, **entry)
+                    for name, entry in source['files'].items()}
+        if {entry['name']: entry for entry in pins['model']} != expected:
+            raise ValueError('Release download pins do not match accepted response model')
+        if pins['model_revision'] != source['revision'] or pins['id'] != 'livecopilot-laya-response-2.5.0-e505137a5e1bfa83':
+            raise ValueError('Release model identity mismatch')
+        if pins.get('runtime_id') != json.loads((root / 'response-model.json').read_text())['runtime_pin_id']:
+            raise ValueError('Release runtime compatibility mismatch')
+        if sum(p.stat().st_size for p in root.rglob('*') if p.is_file()) > 2 * 1024 * 1024:
+            raise ValueError('Unexpected large files in packaged Laya resources')
+    elif args.verify_only:
         verify(args.resource_dir, source)
     else:
         prepare(args.resource_dir, source)

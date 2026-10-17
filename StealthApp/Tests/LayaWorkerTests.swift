@@ -5,7 +5,7 @@ import Foundation
 final class LayaWorkerTests: XCTestCase {
     func testPinnedInitialDownloadSizeAndIncompleteManifest() throws {
         let pins = try XCTUnwrap(LayaDownloadSize.load())
-        XCTAssertEqual(pins.totalBytes, 766_827_627)
+        XCTAssertEqual(pins.totalBytes, 766_807_229)
         let complete = Data(#"{"python":{"size":10},"source":{"size":20},"wheels":[{"size":30}],"model":[{"size":40},{"size":50}]}"#.utf8)
         XCTAssertEqual(try JSONDecoder().decode(LayaDownloadSize.self, from: complete).totalBytes, 150)
         let missing = Data(#"{"python":{"size":10},"source":{"size":20},"wheels":[{}],"model":[{"size":40}]}"#.utf8)
@@ -67,7 +67,7 @@ final class LayaWorkerTests: XCTestCase {
         XCTAssertEqual(pin.url.absoluteString, "https://example.com/python.tar.gz")
         XCTAssertEqual(pin.digest, digest)
         let resources = try XCTUnwrap(Bundle.main.resourceURL).appendingPathComponent("LayaRuntime/pins.json")
-        XCTAssertEqual(try LayaBootstrap.downloadFileTotal(from: Data(contentsOf: resources)), 32)
+        XCTAssertEqual(try LayaBootstrap.downloadFileTotal(from: Data(contentsOf: resources)), 30)
     }
 
     func testInstallerFileCountTelemetryAndValidation() async throws {

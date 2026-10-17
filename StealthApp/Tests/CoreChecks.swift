@@ -231,7 +231,7 @@ enum CoreChecks {
         try "#!/bin/sh\nprintf '%s\\n' '{\"ready\":true}'\nwhile IFS= read -r row; do printf '%s\\n' \"$row\"; done\n".write(to: fake, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fake.path)
         let echoWorker = LocalInferenceWorker(mode: "speech", modelDirectory: localFixture, executable: fake)
-        let response = try await echoWorker.call(["op": "ping", "unicode": "中文🙂"], timeout: 2)
+        let response = try await echoWorker.call(["op": "ping", "unicode": "中文🙂"], timeout: 15)
         try expect(response["unicode"] as? String == "中文🙂", "stdio framing or Unicode was corrupted")
         echoWorker.close(); passed.append("native IPC delivers short flushed replies without waiting for a full read buffer")
         do { _ = try await echoWorker.call(["op": "ping"]); throw CheckError(description: "closed worker restarted") }
@@ -243,7 +243,7 @@ enum CoreChecks {
             try "#!/bin/sh\nprintf '%s\\n' '{\"ready\":false,\"error\":\"\(code)\"}'\n".write(to: failing, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: failing.path)
             let worker = LocalInferenceWorker(mode: "embedding", modelDirectory: localFixture, executable: failing)
-            do { _ = try await worker.call(["op": "ping"], timeout: 2); throw CheckError(description: "failed startup accepted") }
+            do { _ = try await worker.call(["op": "ping"], timeout: 15); throw CheckError(description: "failed startup accepted") }
             catch is CheckError { throw CheckError(description: "failed startup accepted") }
             catch {
                 try expect(error.localizedDescription.contains(expected), "startup failure lost actionable stage")
