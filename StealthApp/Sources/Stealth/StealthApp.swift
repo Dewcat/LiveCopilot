@@ -33,7 +33,7 @@ private struct LiveCopilotMenuBar: Scene {
     var body: some Scene {
         MenuBarExtra(isInserted: isInserted) {
             MenuContent(coordinator: coordinator, hotkeys: coordinator.hotkeys,
-                        openSettings: delegate.openSettings,
+                        openSettings: { delegate.openSettings() },
                         openHistory: delegate.openHistory,
                         toggleOverlay: delegate.toggleOverlay)
         } label: {
@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.coordinator.saveSession()
             self.readyToTerminate = true
         }
-        coordinator.updates.openManagement = { [weak self] in self?.openSettings() }
+        coordinator.updates.openManagement = { [weak self] in self?.openSettings(initialPage: .about) }
         updateActivityObservation = Publishers.MergeMany([
             coordinator.objectWillChange.eraseToAnyPublisher(),
             coordinator.suggestion.objectWillChange.eraseToAnyPublisher(),
@@ -277,13 +277,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DebugLog.log("overlay.visibility visible=\(overlay?.isVisible == true)")
     }
 
-    func openSettings() {
+    func openSettings(initialPage: SettingsPage = .general) {
         if let settingsWindow {
             settingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let hosting = NSHostingController(rootView: SettingsView(coordinator: coordinator))
+        let hosting = NSHostingController(rootView: SettingsView(coordinator: coordinator, initialPage: initialPage))
         let window = NSWindow(contentViewController: hosting)
         window.title = L10n.text("LiveCopilot Settings", language: coordinator.settings.language)
         window.sharingType = .readOnly

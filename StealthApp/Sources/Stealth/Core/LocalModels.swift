@@ -23,7 +23,7 @@ enum ListeningService: String, Codable, CaseIterable, Identifiable {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
         // Preserve all other preferences when upgrading the retired sentence recognizer.
-        if value == "local" { self = .paraformer; return }
+        if value == "local" { self = .zipformer; return }
         guard let service = Self(rawValue: value) else {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown listening service")
         }

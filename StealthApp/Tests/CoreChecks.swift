@@ -72,7 +72,7 @@ enum CoreChecks {
         try check("retired sentence ASR migrates without resetting user preferences") {
             let json = #"{"listeningService":"local","reasoningService":"deepSeek","deepSeekModel":"deepseek-flash","embeddingService":"local","background":"frosted","automaticSuggestions":false}"#
             let settings = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-            try expect(settings.listeningService == .paraformer && settings.deepSeekModel == "deepseek-flash" && settings.embeddingService == .local, "legacy upgrade lost configuration")
+            try expect(settings.listeningService == .zipformer && settings.deepSeekModel == "deepseek-flash" && settings.embeddingService == .local, "legacy upgrade lost configuration")
             try expect(settings.background == .frosted && !settings.automaticSuggestions, "legacy upgrade reset appearance or behavior")
             try expect(ListeningService.allCases.map(\.rawValue) == ["zipformer", "paraformer", "apple", "openAI"], "recognizer choices or recommendation order changed")
         }

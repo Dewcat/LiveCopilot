@@ -4,6 +4,42 @@ import SwiftUI
 @testable import LiveCopilot
 
 final class OnboardingTests: XCTestCase {
+    @MainActor func testVersion23SkippedGuideRetainsSavedParaformerOnUpgrade() throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let firstRun = OnboardingStore(defaults: defaults, dataDirectory: root)
+        XCTAssertTrue(firstRun.isNewInstall)
+        // v2.3.0 saves this literal at first launch, before any model download.
+        defaults.set(Data(#"{"listeningService":"paraformer","embeddingService":"local","reasoningService":"separateOpenAI"}"#.utf8), forKey: "livecopilot.settings")
+        firstRun.deferSetup()
+        let upgraded = OnboardingStore(defaults: defaults, dataDirectory: root)
+        XCTAssertFalse(upgraded.isNewInstall)
+        XCTAssertEqual(upgraded.state.disposition, .deferred)
+        XCTAssertEqual(AppSettings.load(defaults: defaults).listeningService, .paraformer)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @MainActor func testSkippingFreshGuideKeepsZipformerWithoutDownloading() throws {
+        let (suite, defaults) = defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = OnboardingStore(defaults: defaults, dataDirectory: root)
+        XCTAssertTrue(store.isNewInstall)
+        let settings = AppSettings.load(defaults: defaults)
+        XCTAssertEqual(settings.listeningService, .zipformer)
+        store.deferSetup()
+        settings.save(defaults: defaults)
+        let reopened = OnboardingStore(defaults: defaults, dataDirectory: root)
+        XCTAssertEqual(reopened.state.disposition, .deferred)
+        XCTAssertEqual(AppSettings.load(defaults: defaults).listeningService, .zipformer)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+        var chosen = settings
+        chosen.listeningService = .paraformer
+        chosen.save(defaults: defaults)
+        XCTAssertEqual(AppSettings.load(defaults: defaults).listeningService, .paraformer)
+    }
+
     @MainActor func testNewGuideDefaultsToMixedLanguagesAndKnowledgeForEveryAnswerStyle() async throws {
         let (suite, defaults) = defaults()
         defer { defaults.removePersistentDomain(forName: suite) }

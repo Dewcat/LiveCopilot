@@ -47,13 +47,7 @@ struct SettingsView: View {
                 UpdateBanner(updates: updates, isBusy: coordinator.isRunning || coordinator.isTransitioning || coordinator.answerIsRunning)
                 Text(t(page.rawValue)).font(.system(size: 24, weight: .semibold))
                 switch page {
-                case .general:
-                    ScrollViewReader { proxy in
-                        ScrollView { general }
-                            .onChange(of: updates.managementRequest) { _, _ in
-                                proxy.scrollTo("software-update-management", anchor: .top)
-                            }
-                    }
+                case .general: ScrollView { general }
                 case .services: ScrollView { services }
                 case .knowledge: knowledge
                 case .history: HistoryView(coordinator: coordinator)
@@ -68,7 +62,7 @@ struct SettingsView: View {
         .toggleStyle(TrailingSwitchStyle())
         .environment(\.locale, coordinator.settings.language.locale)
         .onAppear { loadCustomDraft() }
-        .onChange(of: updates.managementRequest) { _, _ in page = .general }
+        .onChange(of: updates.managementRequest) { _, _ in page = .about }
         .sheet(isPresented: $showOpenAIKey) {
             VStack(alignment: .leading, spacing: 18) {
                 Text(t("Manage OpenAI credential")).font(.title2)
@@ -79,6 +73,7 @@ struct SettingsView: View {
     }
     private var about: some View {
         VStack(alignment: .leading, spacing: 24) {
+            UpdateSettingsView(updates: updates, language: coordinator.settings.language)
             AppBrandTitle(iconSize: 64, titleSize: 28)
             Text(AppInfo.display).foregroundStyle(.secondary).textSelection(.enabled)
             Text(b("A native macOS conversation copilot. Listen, find relevant knowledge, and get words you can say aloud.",
@@ -107,10 +102,6 @@ struct SettingsView: View {
     }
     private var general: some View {
         VStack(alignment: .leading, spacing: 22) {
-            if updates.hasUpdate {
-                UpdateSettingsView(updates: updates, language: coordinator.settings.language)
-                    .id("software-update-management")
-            }
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(b("Getting started", "新用户引导")).font(.headline)
