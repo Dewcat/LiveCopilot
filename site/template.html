@@ -17,6 +17,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <link rel="alternate" hreflang="zh-Hant" href="https://carey-bk.github.io/LiveCopilot/zh-Hant/" />
     <link rel="canonical" href="$canonical" />
     <link
       rel="alternate"
@@ -36,6 +37,7 @@
     <link rel="stylesheet" href="${prefix}styles.css" />
     <link rel="stylesheet" href="${prefix}product.css" />
     <link rel="stylesheet" href="${prefix}phase5.css?v=${asset_version}" />
+    <script id="demo-examples" type="application/json">$demo_examples</script>
     <script src="${prefix}demo.js?v=${asset_version}" defer></script>
     <link rel="preload" as="image" href="${prefix}assets/ls-front-hardware.webp" fetchpriority="high" />
   </head>
@@ -65,8 +67,9 @@
           ><a href="#privacy">$nav_privacy</a
           ><a href="https://github.com/carey-bk/LiveCopilot">GitHub</a>
           <div class="languages" aria-label="$language_label">
-            <a href="$zh_url" lang="zh-CN" $zh_current>中文</a
-            ><a href="$en_url" lang="en" $en_current>EN</a>
+            <a href="$en_url" lang="en" $en_current>English</a>
+            <a href="$hant_url" lang="zh-Hant" $hant_current>繁體中文</a>
+            <a href="$zh_url" lang="zh-Hans" $zh_current>简体中文</a>
           </div>
           <a class="nav-download" href="$download_url"
             >$nav_download <span aria-hidden="true">↓</span></a
@@ -131,7 +134,7 @@
               >
             </div>
             $download_fallback
-            <p class="platform">$hero_meta</p>
+            <p class="platform">$hero_meta</p><p class="platform">$installer_note</p>
             <a class="hero-explore" href="#workflow"
               >$explore_label <span aria-hidden="true">↓</span></a
             >
@@ -327,7 +330,7 @@
               <h3>$overview_hear</h3>
               <span>$overview_local_cloud</span>
             </div>
-            <strong>Apple · Paraformer · GPT-Live-1</strong>
+            <strong>Zipformer · Apple · OpenAI Live</strong>
             <p>$overview_hear_text</p>
           </article>
           <article>
@@ -371,7 +374,7 @@
                 <div>
                   <span>$local_audio</span><b aria-hidden="true">↓</b
                   ><span>$local_transcription</span
-                  ><small>Apple / Paraformer</small><b aria-hidden="true">↓</b
+                  ><small>Zipformer / Apple</small><b aria-hidden="true">↓</b
                   ><span>$local_transcript</span>
                 </div>
                 <div>
@@ -432,6 +435,9 @@
           >
         </div>
       </section>
+      <section class="section wrap release-section" id="release" aria-labelledby="release-heading">
+        <div class="release-intro"><span class="release-version">NEW · 2.5.0</span><h2 id="release-heading">$release_heading</h2><p>$release_intro</p><a class="text-link" href="https://github.com/carey-bk/LiveCopilot/releases/tag/v2.5.0">GitHub · 2.5.0 ↗</a></div>
+        <dl class="release-changes"><div><dt>$release_history_title</dt><dd>$release_history_body</dd></div><div><dt>$release_title_title</dt><dd>$release_title_body</dd></div><div><dt>$release_models_title</dt><dd>$release_models_body</dd></div><div><dt>$release_laya_title</dt><dd>$release_laya_body</dd></div></dl><div class="model-download-note"><h3>$model_download_title</h3><p><strong>$installer_note</strong> $model_download_body</p></div></section>
       <section class="wrap download-section" id="download">
         <img src="${prefix}assets/logo.png" width="80" height="80" alt="" />
         <h2>$install_title</h2>
@@ -482,6 +488,7 @@
                     <p class="tradeoff">$apple_tradeoff</p>
                   </div>
                 </article>
+                <article class="service-option"><div class="option-heading"><h4>Zipformer</h4><span class="cost">$zipformer_cost</span></div><div class="option-copy"><p>$zipformer_benefit</p><p class="tradeoff">$zipformer_tradeoff</p></div></article>
                 <article class="service-option">
                   <div class="option-heading">
                     <h4>Paraformer</h4>
@@ -673,7 +680,7 @@
             <a href="https://github.com/carey-bk">$author_link</a
             ><a href="https://github.com/carey-bk/LiveCopilot">GitHub</a
             ><a
-              href="https://github.com/carey-bk/LiveCopilot/releases/tag/v2.2.0"
+              href="https://github.com/carey-bk/LiveCopilot/releases/tag/v2.5.0"
               >$release_link</a
             ><a href="https://github.com/carey-bk/LiveCopilot/blob/main/LICENSE"
               >MIT License</a

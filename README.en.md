@@ -1,5 +1,5 @@
-# LiveCopilot documentation
+# LiveCopilot — English
 
-The repository documentation is now maintained in English. See the [main README](README.md).
+[English](README.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-The product website remains available in [English](https://carey-bk.github.io/LiveCopilot/en/) and [Chinese](https://carey-bk.github.io/LiveCopilot/).
+The complete English introduction is maintained in [README.md](README.md).

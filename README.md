@@ -1,86 +1,79 @@
 # LiveCopilot
 
-<img src="assets/brand/LiveCopilot-preview.png" width="100" alt="LiveCopilot logo">
+<img src="assets/brand/LiveCopilot-preview.png" width="88" alt="LiveCopilot">
 
-**English documentation** · [English website](https://carey-bk.github.io/LiveCopilot/en/) · [Chinese website](https://carey-bk.github.io/LiveCopilot/)
+**English** · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-A native macOS conversation copilot for interviews, meetings, and academic discussions. Follow live speech, retrieve relevant material from your own documents, and get suggestions you can say aloud. You can also type a question with listening off.
+**Follow the conversation. Find your evidence. Answer in your own words.**
 
-Built with Swift/SwiftUI on the native macOS foundation of [Stealth](https://github.com/vortechron/stealth). No LiveCopilot account, developer-operated relay server, cloud vector database, or spoken AI responses.
+A native macOS assistant for interviews, meetings and academic discussions. LiveCopilot transcribes speech, retrieves relevant passages from your documents and streams answer suggestions in a floating window. You can also type a question without starting the microphone.
 
-## Release history
+[Download 2.5.0](https://github.com/carey-bk/LiveCopilot/releases/tag/v2.5.0) · [Product website](https://carey-bk.github.io/LiveCopilot/en/) · [Release notes](docs/releases/2.5.0.md)
 
-Version **1.4.0** adds independent transcript/answer font sizes (11–28 pt) and Qwen, GLM, and Kimi analysis presets. The retired SenseVoiceSmall selection migrates to Paraformer without resetting other preferences or deleting downloaded weights. See [release notes](docs/V1_4_0_UPDATE.md) and the [service guide](docs/SERVICE_GUIDE.md).
+## Download and requirements
 
-Version **1.4.1** retains these features and adds Developer ID signing, hardened runtime, and Apple notarization. Both the app and DMG include stapled tickets. See [distribution validation](docs/V1_4_1_UPDATE.md).
+**2.5.0 · 37.98 MB · Universal macOS app · Developer ID signed and Apple notarized**
 
-Version **2.0.0** adds Jev Mode local Laya triggering, SHA-256 verified ModelScope model delivery with fallback sources, real download progress and speed, GPT-Live-1 transcription language preferences, and caption/UI fixes. Laya requires Apple Silicon and macOS 14+. Updating preserves downloaded models, settings, and user data.
+[Download DMG — Hong Kong mirror](https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.5.0/LiveCopilot-2.5.0-macOS-universal.dmg) · [GitHub download and checksums](https://github.com/carey-bk/LiveCopilot/releases/tag/v2.5.0)
 
-Version **2.1.0** adds a six-step first-run guide and in-app updates. Use **Settings → About → Check for Updates**, or the application menu. Automatic checks are optional; downloading and installation require confirmation. Models, documents, history, and keys are preserved. Versions 2.0 and earlier need one manual upgrade to 2.1 first. See [2.1 release notes](docs/V2_1_0_UPDATE.md).
+| Component | Requirement |
+|---|---|
+| Application | macOS 14 or later; Apple Silicon or Intel |
+| Local Laya automatic triggering | Apple Silicon; downloaded separately |
+| Apple local speech | macOS 26 or later, supported hardware and language |
+| AI answers | Your own API key for a supported analysis service |
 
-Version **2.2.0** adds hybrid knowledge, Auto/Chinese/English answer language, model performance references, faster automatic suggestions, improved overlay sharing protection, and a configurable overlay shortcut. See [2.2 release notes](docs/releases/2.2.0.md).
+The small installer **does not contain Laya weights**. Download the models you choose in the setup guide or Settings → Services. No separate Python, Ollama or Docker installation is needed. Approximate downloads: Zipformer + VAD **200 MB**, BGE-M3 **635 MB**, Laya and its runtime **767 MB**. Installed models require additional disk space and use your Mac's memory and compute.
 
-## Development changes since 2.3
+Open the DMG, drag LiveCopilot into Applications and launch it there. Existing users can choose **LiveCopilot → Check for Updates…** in the application menu. Normal upgrades preserve settings, API keys, documents and history; updating Laya requires a separate model download.
 
-The current development checkout includes Zipformer as the recommended local Chinese/English speech engine, optional terminology enhancement (off by default), real model-load self-checks and copyable diagnostics, and complete multi-turn session history with search, Markdown/TXT export, citations, automatic titles, and manual or automatic renaming. The default retrieval count is five passages. These changes are not a claim that a new public release has shipped.
+## What is new since 2.3?
 
-The accepted fine-tuned Laya response checkpoint is currently bundled in the locally installed app. A clean source checkout must explicitly stage and verify it before distribution; the existing ModelScope Laya download is the older upstream model. See [model release readiness](docs/MODEL_RELEASE_READINESS.md).
+| Area | Improvements in 2.5.0 |
+|---|---|
+| Complete session history | Searchable three-column view, date groups and a chronological timeline of speech, questions, answers and citations. Copy individual messages or export a session as Markdown/TXT. Older transcript-only records remain readable. |
+| Better session titles | Automatic naming after a voice session uses the configured analysis API and Q&A context to correct obvious speech homophones in the title. Rename or generate a title again from the context menu. Transcripts are not rewritten. |
+| Reliable local models | Real loading/inference self-checks after download, manual checks, copyable diagnostics and specific recovery advice. Embedding initialization uses less initial memory and can fall back from GPU to CPU. |
+| Recommended bilingual speech | Zipformer is the recommended local Chinese/English engine, with optional terminology enhancement off by default. Paraformer remains an alternative. |
+| Fine-tuned Laya | Updated response-intent weights decide when to answer using a 1,024-token context. Downloads pin an immutable ModelScope revision and verify file sizes and SHA-256 hashes. The analysis API still generates the answer. |
+| Clearer native settings | Compact model actions, side-by-side font controls, answer style after API-key settings and a default of five retrieval passages. Background choices apply to the floating window; settings stay white. Capture exclusion defaults off; existing explicit preferences are retained. |
 
-## Download
+See the [2.5.0 validation report](docs/releases/2.5.0-validation.md) for clean-checkout builds, model checks, notarization and the tested 2.3 → 2.5 in-app update.
 
-[Latest published release, downloads, and checksums](https://github.com/carey-bk/LiveCopilot/releases/latest)
+## Start your first conversation
 
-Requires **macOS 14+**, on Apple Silicon or Intel. Apple Speech additionally requires **macOS 26+**, supported hardware, and a supported language. No Xcode, Python, Ollama, or developer tools are needed to use the packaged app.
+1. **Install and open the setup guide.** Choose your interface language and usage mode. The guide can be reopened from General settings.
+2. **Prepare speech and local models.** For Chinese/English, start with Zipformer. Add BGE-M3 for document retrieval and Laya for automatic triggering on Apple Silicon. Download only what you need.
+3. **Connect your analysis service.** Choose OpenAI, DeepSeek, Qwen, GLM, Kimi or a compatible streaming Chat Completions endpoint, then save your API key.
+4. **Add context if needed.** Import PDF, Markdown, TXT or DOCX into Knowledge. Scanned PDFs need OCR first. Rebuild document indexes after changing the embedding model.
+5. **Listen or type.** In-person mode uses the microphone; remote-meeting mode captures system audio with an optional microphone. Grant the relevant macOS permissions. You can also type with listening off.
+6. **Review the session.** Read answers and source passages in the floating window, then revisit questions, answers and citations in History.
 
-Quit the previous version, open the DMG, and drag `LiveCopilot.app` into Applications (or `~/Applications`). Keep the app at a consistent path.
+`⌥H` shows or hides the floating window. Answer, recap and follow-up shortcuts are configurable. Always review important facts and citations.
 
-Published version 2.2.0 was signed by **Developer ID Application: Bokai Zhang (666N9BJMD7)** and notarized by Apple. Both the app and DMG carry stapled tickets; see [release validation](docs/releases/2.2.0-validation.md). macOS may still show its standard first-download confirmation.
+## Choose where processing happens
 
-## Choose your services
-
-| Stage | Options | Data and cost |
+| Stage | Available services | What leaves your Mac? |
 |---|---|---|
-| Local speech | Zipformer (recommended for Chinese/English); Paraformer; Apple SpeechAnalyzer / SpeechTranscriber | On-device recognition with no API usage fee. Initial model downloads require internet. |
-| Cloud speech | OpenAI Live | Sends audio to OpenAI; billed to your account. Realtime transcription and semantic question detection. |
-| Embeddings | Local BGE-M3 or OpenAI Embeddings | BGE-M3 processes text on-device; OpenAI sends indexing/query text to its API. Retrieval stays local. |
-| Answers | OpenAI, DeepSeek, Qwen, GLM, Kimi, or a compatible streaming Chat Completions API | Receives the question, relevant conversation, and retrieved passages. Bring your own service key. |
+| Speech recognition | Local Zipformer, Paraformer or Apple; OpenAI Live | Local recognition stays on-device. OpenAI Live sends audio to OpenAI. |
+| Document indexing and retrieval | Local BGE-M3 or OpenAI Embeddings | BGE-M3 runs locally. OpenAI Embeddings receives indexing/query text; retrieval storage remains local. |
+| Automatic response triggering | Local Laya for local speech; OpenAI Live's semantic delegation | Laya's decision runs on-device. Cloud speech follows its provider's data handling. |
+| Answer generation and automatic titles | Your selected analysis API | Relevant question/conversation text and selected evidence; automatic titles use session Q&A context. |
 
-Choose local speech + BGE-M3 + DeepSeek to keep recognition and indexing on your Mac while using DeepSeek for answers. No OpenAI key is needed for that combination. Local models still use disk space, memory, and compute; analysis still sends relevant text to your chosen provider.
+For example, **Zipformer + BGE-M3 + DeepSeek** keeps speech recognition and indexing local and uses DeepSeek for answers. That combination does not require an OpenAI key. Local processing has no API usage fee; cloud services may charge your account.
 
-Zipformer and Paraformer update Chinese/English caption previews as you speak. Zipformer also supports optional terminology enhancement. Apple streams supported languages using on-device models. Compare accuracy and latency using your own voice, accent, hardware, and audio conditions. Local automatic suggestions use Laya to assess completed questions after speech pauses. GPT-Live-1 delegates questions using its own semantic judgment.
+## Privacy and practical limits
 
-## Get started
+- API keys are stored in the local macOS Keychain. Documents, indexes and session history are stored locally. There is no LiveCopilot account or developer-operated relay server.
+- Local speech does **not** mean fully offline answers: the chosen analysis provider receives relevant text. Its retention and billing policies apply. Deleting local history cannot retract earlier API requests.
+- Screen-sharing/recording exclusion is optional and off by default. Verify it with the actual meeting application; settings and history remain visible to capture.
+- No built-in OCR, guaranteed speaker separation, spoken AI responses or cloud backup. Laya may miss a request or trigger incorrectly. Intel app support does not imply Intel support for Laya.
 
-1. Follow the six-step first-run guide, or open Settings → Services. Select a speech route and download its local model, or configure OpenAI Live.
-2. Select BGE-M3 or OpenAI Embeddings under the knowledge service. Select an analysis provider and save its API key.
-3. Optionally import PDF, Markdown, TXT, or DOCX in Knowledge. Scanned PDFs require external OCR. Rebuild the index after changing embedding models.
-4. Choose Interview, Meeting, or Academic Defense. Remote Meeting captures system audio plus an optional microphone; In-Person uses the microphone without promising speaker separation.
-5. Start listening and grant the requested macOS audio permissions. Or type a question without starting capture.
+[Privacy details](docs/PRIVACY.md) · [Service guide](docs/SERVICE_GUIDE.md) · [Local models](docs/LOCAL_MODELS.md)
 
-Keys are securely stored in the local macOS Keychain. Startup checks silently; a saved-but-inaccessible key is shown as needing authorization. Old manually created `LiveCopilot-OpenAI` and analysis items can be imported once with **Authorize saved key**. Keys never enter source, logs, or editable fields.
+## Development and documentation
 
-## A small window for the conversation
-
-- Chinese and English UI; glass, soft frost, or white backgrounds. Separate transcript and answer font controls under General → Language & appearance, applied immediately and saved.
-- Compact when empty, taller as content arrives. Manual resize and right-edge reveal.
-- **Refresh** clears the current transcript, draft, answer, and context. Active listening starts fresh; knowledge and saved history remain.
-- Replies use spoken paragraphs, with evidence/notes below when useful. General knowledge and reasoning can extend the documents without inventing personal experience.
-- Generate answer, recap, and follow-up have distinct task prompts. Source passages can be expanded.
-- **About** links to the author's GitHub, repository, and bilingual product guide.
-
-`Option + H` toggles the overlay. Generate answer, recap, and follow-up shortcuts are configurable. The 2.0.0 defaults are Control–Option–Space, Control–Option–S and Control–Option–X; saved custom bindings are preserved. Recap and follow-up can be disabled independently in General, hiding their buttons and releasing their shortcuts. Screenshot/sharing exclusion is optional; its behavior depends on macOS and the capture application. Settings and History remain capturable.
-
-Qwen, GLM, and Kimi presets use streamed Chat Completions with provider-specific thinking controls. Defaults are `qwen3.8-flash`, `glm-5.3-flash`, and `kimi-k2.6`; OpenAI uses `gpt-6.1-sol` and DeepSeek uses `deepseek-flash` on domestic general API endpoints. Edit the base URL for a matching region/account, save, then configure its key. Keys are isolated by provider and endpoint. Protocol and mock tests passed; real account access has not been tested with Qwen, GLM, or Kimi credentials. No keys are needed for development/mock testing; enter yours only in the app to validate a real request.
-
-## Privacy and limits
-
-The DMG contains no keys, personal documents, history, or knowledge database. Documents, indexes, and session history stay local. Selected cloud services receive the content described above; their retention policies still apply. Refreshing or deleting local data does not retract previous requests.
-
-Check important facts and citations. The app does not provide OCR, reliable multi-speaker diarization, or cloud backups. Headphones help prevent remote audio leaking into microphone transcription. See [privacy boundaries](docs/PRIVACY.md), [local models](docs/LOCAL_MODELS.md), and [verification notes](docs/VERIFICATION.md).
-
-## Build and verify
-
-Install full Xcode and XcodeGen, then:
+Built with Swift/SwiftUI. Full Xcode and XcodeGen are required to build from source:
 
 ```bash
 ./StealthApp/scripts/test-core.sh
@@ -89,12 +82,22 @@ xcodebuild -project StealthApp/LiveCopilot.xcodeproj -scheme LiveCopilot \
   -configuration Debug -derivedDataPath StealthApp/build CODE_SIGNING_ALLOWED=NO test
 ```
 
-The build downloads checksum-pinned Sparkle and sherpa-onnx/llama.cpp runtimes and compiles a universal inference helper. Debug uses a separate bundle identifier to avoid taking over production permissions. Mock checks do not use real keys or paid APIs.
+A clean checkout builds the small app without fetching Laya weights. Native runtime dependencies are checksum-pinned. Debug uses a separate bundle identifier. Mock checks need no API key or paid requests. Distribution signing and notarization are separate steps; follow the release guide before packaging.
 
-From a clean, committed checkout, `./StealthApp/scripts/package-dmg.sh` builds the DMG. See [publishing instructions](docs/RELEASING.md). Preview the bilingual site with `python3 StealthApp/scripts/build-site.py`, then serve `_site/` with a local HTTP server.
+| Documentation | Purpose |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Components and data flow |
+| [Verification](docs/VERIFICATION.md) | Tests and evidence boundaries |
+| [Model distribution](docs/MODEL_RELEASE_READINESS.md) | Model pins and release requirements |
+| [Release guide](docs/RELEASING.md) | Signing, notarization, packaging and updates |
+| [Report an issue](https://github.com/carey-bk/LiveCopilot/issues) | Include app/macOS versions and model diagnostics; omit keys and private conversation text |
 
-## Attribution
+Technical documentation is maintained in English. These three README editions describe the same release; the app's interface languages remain Simplified Chinese and English.
 
-Derived from Stealth commit `02b78cc82195a1711e3de11adfaed26011635dae`, by vortechron. Original Git history and the [MIT license](LICENSE) are preserved. Inference runtimes retain their own notices in the app. Editable SVG logos are in [assets/brand](assets/brand/README.md).
+## Credits and license
 
-[Author: carey-bk](https://github.com/carey-bk) · [LiveCopilot repository](https://github.com/carey-bk/LiveCopilot)
+Derived from [vortechron/stealth](https://github.com/vortechron/stealth), preserving upstream Git history and the [MIT license](LICENSE). Runtime dependencies retain their own license notices. [Author: carey-bk](https://github.com/carey-bk).
+
+---
+
+[English](README.md) · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)

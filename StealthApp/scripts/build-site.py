@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render two static language pages. No build dependencies or third-party requests."""
+"""Render three static language pages. No build dependencies or third-party requests."""
 from pathlib import Path
 from string import Template
 import hashlib
@@ -23,7 +23,9 @@ for url in [github_download, mirror_download]:
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError('Download URLs must be public HTTPS URLs without credentials, query strings or fragments.')
 content = json.loads((SOURCE / 'content.json').read_text())
-assert content['zh'].keys() == content['en'].keys(), 'Both language pages need matching content.'
+assert all(copy.keys() == content['en'].keys() for copy in content.values()), 'All language pages need matching content.'
+locales = {'zh': ('', 'zh-Hans'), 'en': ('en', 'en'), 'zh-Hant': ('zh-Hant', 'zh-Hant')}
+examples = json.loads((SOURCE / 'examples.json').read_text())
 template = Template((SOURCE / 'template.html').read_text())
 # Output is disposable; clean it so retired runtime assets cannot ship.
 if OUTPUT.exists():
@@ -37,13 +39,17 @@ for language, copy in content.items():
                   if key.endswith('_rich') else html.escape(value, quote=True))
             for key, value in copy.items()}
     data['asset_version'] = hashlib.sha256(b''.join((SOURCE / name).read_bytes() for name in ['demo.js', 'phase5.css', 'product.css', 'styles.css'])).hexdigest()[:12]
-    data.update(lang='en' if english else 'zh-CN', prefix='../' if english else '',
-                home='./', zh_url='../' if english else './', en_url='./' if english else 'en/',
-                zh_current='' if english else 'aria-current="page"',
+    path, lang = locales[language]
+    prefix = '../' if path else ''
+    data.update(lang=lang, prefix=prefix, home='./',
+                zh_url=prefix or './', en_url=prefix + 'en/', hant_url=prefix + 'zh-Hant/',
+                zh_current='aria-current="page"' if language == 'zh' else '',
                 en_current='aria-current="page"' if english else '',
-                canonical=BASE + ('en/' if english else ''),
+                hant_current='aria-current="page"' if language == 'zh-Hant' else '',
+                canonical=BASE + (path + '/' if path else ''),
+                demo_examples=json.dumps(examples[language], ensure_ascii=False).replace('<', '\\u003c'),
                 download_url=html.escape(mirror_download or github_download, quote=True),
-                download_fallback=('<p class="install-note"><a class="text-link" href="' + html.escape(github_download, quote=True) + '">' + ('Alternative: GitHub download' if english else '备用：GitHub 下载') + '</a></p>') if mirror_download else '')
+                download_fallback=('<p class="install-note"><a class="text-link" href="' + html.escape(github_download, quote=True) + '">' + ('Alternative: GitHub download' if english else ('備用：GitHub 下載' if language == 'zh-Hant' else '备用：GitHub 下载')) + '</a></p>') if mirror_download else '')
     title_lines = copy['hero_title'].split('\n')
     data['hero_title_markup'] = ''.join('<span class="title-line">' + ''.join('<span class="title-character">' + html.escape(c) + '</span>' for c in line) + '</span>' for line in title_lines) + '<span class="title-cursor" aria-hidden="true"></span>'
     # One product structure for every section; translated text is already escaped.
@@ -66,7 +72,7 @@ for language, copy in content.items():
                       product_evidence_text=data['workflow_evidence_text'])
     data['product_workflow_answer'] = '<div data-product="workflow">' + answer_template.substitute(short_copy) + '</div>'
     data['product_case_answer'] = '<div data-product="case">' + answer + '</div>'
-    destination = OUTPUT / ('en' if english else '')
+    destination = OUTPUT / path
     destination.mkdir(exist_ok=True)
     (destination / 'index.html').write_text(template.substitute(data))
 for name in ['styles.css', 'product.css', 'phase5.css', 'demo.js']:
@@ -77,5 +83,5 @@ if (SOURCE / 'updates').exists():
 (OUTPUT / '.nojekyll').write_text('')
 (OUTPUT / 'sitemap.xml').write_text('<?xml version="1.0" encoding="UTF-8"?>\n'
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-    f'<url><loc>{BASE}</loc></url><url><loc>{BASE}en/</loc></url></urlset>\n')
-print('Built Chinese and English pages in _site/.')
+    f'<url><loc>{BASE}</loc></url><url><loc>{BASE}en/</loc></url><url><loc>{BASE}zh-Hant/</loc></url></urlset>\n')
+print('Built English, Traditional Chinese and Simplified Chinese pages in _site/.')
