@@ -1,6 +1,6 @@
 # LiveCopilot product pages
 
-Chinese lives at `/LiveCopilot/`; English at `/LiveCopilot/en/`. Both are complete
+Simplified Chinese lives at `/LiveCopilot/`, Traditional Chinese at `/LiveCopilot/zh-Hant/`, and English at `/LiveCopilot/en/`. All three are complete
 static HTML pages. The language links, installation instructions, service guide,
 source disclosure, and downloads work without JavaScript.
 
@@ -11,7 +11,7 @@ python3 StealthApp/scripts/build-site.py
 python3 -m http.server 18744 --directory _site
 ```
 
-Edit `content.json`, `template.html`, `styles.css`, `phase5.css`, `product.css`, `components/*.html`, and `demo.js`. The existing
+Edit `content.json`, `template.html`, `styles.css`, `phase5.css`, `product.css`, `components/*.html`, `examples.json`, and `demo.js`. The existing
 Python builder escapes translated copy and requires matching translation keys.
 The site needs no frontend package installation. The Hero uses a static PNG hardware shell; there are no external fonts, trackers, cookies, audio capture, or model requests. GitHub Pages publishes `_site/` through
 `.github/workflows/pages.yml` when website inputs change on `main`.
@@ -36,7 +36,7 @@ retrieval, edge hiding, and a speakable answer. Caption motion runs once; other
 small decorative animations have finite iterations. The edge demo supports a
 visible button and keyboard, in addition to pointer interaction.
 
-Four use cases share one panel and a bilingual data object in `demo.js`.
+Four use cases share one panel and localized data in `examples.json`, embedded safely at build time.
 Arrow keys, Home, and End operate the tab list. Containers reserve space to
 avoid movement between examples. All examples use fictional material.
 
@@ -54,7 +54,7 @@ corresponding data to their services. Answer generation sends the question,
 relevant conversation, and retrieved passages to the selected analysis service.
 API keys use macOS Keychain. There is no LiveCopilot account/backend.
 
-Download remains the signed, notarized v1.4.1 Universal DMG. Apple Speech's
+Download is the signed, notarized v2.5.0 Universal DMG (37.98 MB). Models download separately during setup or from Services. Local Laya requires Apple Silicon and macOS 14+; Intel users can use manual answers or the cloud speech route. Apple Speech's
 macOS 26 requirement remains in the service guide; the app supports macOS 14+
 through its other speech routes.
 
@@ -124,7 +124,7 @@ They are excluded from the clean build and are never loaded in production.
 
 ## Directory map
 
-- `site/`: sole editable website source, bilingual copy, shared native UI and assets.
+- `site/`: sole editable website source, trilingual copy, shared native UI and assets.
 - `site/experiments/`: retired implementation references, excluded from publication.
 - `site/reference/`: original website copy documents, retained for reference.
 - `_site/`: disposable generated output; do not edit.

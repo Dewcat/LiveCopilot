@@ -80,3 +80,17 @@ html[lang=en] .hero h1{font-size:clamp(30px,3vw,52px)}
 .case-response .product-sources details:nth-of-type(2),
 [data-product="workflow"] .product-sources details:nth-of-type(2){display:block}
 .case-response .product-sources details{overflow-wrap:anywhere}
+
+/* Release overview shares the quiet typography and separators of the product page. */
+.languages a { white-space: nowrap; }
+.release-section { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: 48px 72px; }
+.release-version { font-size: 12px; font-weight: 700; letter-spacing: .12em; color: #516074; }
+.release-intro h2 { font-size: clamp(28px, 3.5vw, 42px); line-height: 1.2; letter-spacing: -.035em; margin: 16px 0; }
+.release-intro p, .model-download-note p { color: #535b68; line-height: 1.8; }
+.release-changes { margin: 0; }
+.release-changes > div { border-top: 1px solid #d9dde3; padding: 18px 0; }
+.release-changes dt { font-size: 18px; font-weight: 650; }
+.release-changes dd { margin: 8px 0 0; color: #535b68; line-height: 1.75; }
+.model-download-note { grid-column: 1 / -1; border-top: 1px solid #d9dde3; padding-top: 24px; }
+.model-download-note h3 { margin: 0; font-size: 20px; }
+@media (max-width: 760px) { .release-section { grid-template-columns: 1fr; gap: 28px; } }

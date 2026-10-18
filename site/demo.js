@@ -132,14 +132,14 @@ if (!reduced.matches) {
       time < 3000
         ? english
           ? "Listening"
-          : "正在监听"
+          : (document.documentElement.lang === "zh-Hant" ? "正在聆聽" : "正在监听")
         : time < 9000
           ? english
             ? "Assistance in progress"
-            : "正在生成建议"
+            : (document.documentElement.lang === "zh-Hant" ? "正在生成建議" : "正在生成建议")
           : english
             ? "Question ready"
-            : "问题已完整",
+            : (document.documentElement.lang === "zh-Hant" ? "問題已完整" : "问题已完整"),
     );
     const key = ["complete", "sources", "resetting"].includes(state)
       ? "complete"
@@ -386,102 +386,7 @@ if (!reduced.matches) {
       if (target instanceof HTMLDetailsElement) target.open = true;
     }),
   );
-  const examples = {
-    zh: {
-      interview: {
-        question: "为什么选择 early-exit 架构？",
-        documents: ["Project Report.pdf", "README.md"],
-        passage:
-          "浅层出口负责处理简单样本，困难样本继续进入深层网络。这样可以在保持准确率的同时，减少不必要的计算开销。",
-        answer:
-          "我选择 early-exit，主要是为了让计算量跟样本难度匹配。简单样本可以在浅层提前输出，复杂样本再继续推理，从而在准确率和推理成本之间取得平衡。",
-        title: "基于项目资料 · 实时回答",
-        sources: ["[S1] Project Report.pdf · Early Exit", "[S2] README.md · Architecture"],
-        sourcePassage2: "README.md 说明浅层出口与深层网络的分工。",
-      },
-      meeting: {
-        question: "如果只能先上线一个功能，你会怎么判断优先级？",
-        documents: ["Product Strategy.md", "Roadmap.docx"],
-        passage: "优先评估用户覆盖范围、问题发生频率和实现成本；如果同时是后续功能的基础能力，则提高优先级。",
-        answer:
-          "我会先看三个因素：用户价值、实现成本，以及它是不是后续能力的基础。优先上线覆盖高频场景、成本可控，同时能解锁更多后续能力的功能。",
-        title: "结合上下文 · 实时建议",
-        sources: ["[S1] Product Strategy.md · Priorities", "[S2] Roadmap.docx · Q3"],
-        sourcePassage2: "Roadmap 将基础能力排在后续扩展之前。",
-      },
-      defense: {
-        question: "为什么这里使用 ubRMSE？",
-        documents: ["Thesis.pdf", "Experiment Results.pdf"],
-        passage:
-          "ubRMSE 去除平均偏差的影响，更适合观察随机误差；实验中同时报告 Bias、RMSE 与 ubRMSE。",
-        answer:
-          "因为我想把系统性偏差和随机误差分开看。ubRMSE 去除了平均偏差的影响，更能反映随机误差；再结合 Bias 和 RMSE，可以更完整地评价模型表现。",
-        title: "基于论文资料 · 实时回答",
-        sources: ["[S1] Thesis.pdf · Evaluation Metrics", "[S2] Experiment Results.pdf · Table 3"],
-        sourcePassage2: "实验结果同时列出 Bias、RMSE 与 ubRMSE。",
-      },
-      manual: {
-        question: "帮我总结一下这个项目最值得讲的三个点。",
-        documents: ["Project Overview.md", "Review Notes.txt"],
-        passage:
-          "项目围绕真实问题展开，通过明确的技术取舍完成实现，并使用可复现的实验验证结果与局限。",
-        answer:
-          "可以重点讲三点：第一，解决了什么真实问题；第二，为什么选择这条技术路线；第三，用什么实验验证结果。最后补充当前局限，会让项目介绍更完整。",
-        title: "综合本地资料 · 即时整理",
-        sources: ["[S1] Project Overview.md · Summary", "[S2] Review Notes.txt · Key Points"],
-        sourcePassage2: "复盘笔记列出技术取舍、验证结果与局限。",
-      },
-    },
-    en: {
-      interview: {
-        question: "Why did you choose an early-exit architecture?",
-        documents: ["Project Report.pdf", "README.md"],
-        passage:
-          "Shallow exits handle easy samples, while harder ones continue through deeper layers. This avoids unnecessary computation while preserving accuracy.",
-        answer:
-          "I chose early exits to match computation to sample difficulty. Easy inputs can leave at a shallow layer, while complex ones keep going. That balances accuracy with inference cost.",
-        title: "From project files · Live answer",
-        sources: ["[S1] Project Report.pdf · Early Exit", "[S2] README.md · Architecture"],
-        sourcePassage2: "The README describes the roles of shallow exits and deeper layers.",
-      },
-      meeting: {
-        question:
-          "If you could ship only one feature first, how would you prioritize it?",
-        documents: ["Product Strategy.md", "Roadmap.docx"],
-        passage:
-          "Compare user reach, how often the problem occurs, and development cost. Give extra weight to features that enable later work.",
-        answer:
-          "I would weigh user value, development cost, and whether the feature enables what comes next. I would ship a manageable solution to a frequent problem first, especially if it unlocks later capabilities.",
-        title: "With conversation context · Live suggestion",
-        sources: ["[S1] Product Strategy.md · Priorities", "[S2] Roadmap.docx · Q3"],
-        sourcePassage2: "The Roadmap places core capabilities before later expansion.",
-      },
-      defense: {
-        question: "Why use ubRMSE here?",
-        documents: ["Thesis.pdf", "Experiment Results.pdf"],
-        passage:
-          "ubRMSE removes mean bias to reveal random error. The experiments report Bias, RMSE, and ubRMSE together.",
-        answer:
-          "I wanted to separate systematic bias from random error. ubRMSE removes mean bias, so it reflects random error more clearly. I report it with Bias and RMSE to evaluate the model more fully.",
-        title: "From thesis files · Live answer",
-        sources: ["[S1] Thesis.pdf · Evaluation Metrics", "[S2] Experiment Results.pdf · Table 3"],
-        sourcePassage2: "The results report Bias, RMSE, and ubRMSE together.",
-      },
-      manual: {
-        question:
-          "Summarize the three most useful points to discuss about this project.",
-        documents: ["Project Overview.md", "Review Notes.txt"],
-        passage:
-          "The project addresses a real problem through clear technical choices, with reproducible experiments to test the results and limits.",
-        answer:
-          "I would cover three points: the real problem, why I chose this technical approach, and how experiments validated the result. I would finish with the current limitations.",
-        title: "From local files · Instant summary",
-        sources: ["[S1] Project Overview.md · Summary", "[S2] Review Notes.txt · Key Points"],
-        sourcePassage2: "The review notes cover trade-offs, results, and limitations.",
-      },
-    },
-  };
-  const cases = examples[english ? "en" : "zh"];
+  const cases = JSON.parse(document.getElementById("demo-examples").textContent);
   const tabs = [...document.querySelectorAll("[data-case]")];
   const panel = document.querySelector("#case-panel");
   const caseProduct = document.querySelector('[data-product="case"]');
