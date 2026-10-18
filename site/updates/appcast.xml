@@ -6,6 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LiveCopilot</title>
         <item>
+            <title>2.5.1</title>
+            <pubDate>Sun, 18 Oct 2026 10:52:06 +0800</pubDate>
+            <link>https://carey-bk.github.io/LiveCopilot/</link>
+            <sparkle:version>20261018.024634</sparkle:version>
+            <sparkle:shortVersionString>2.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>LiveCopilot 2.5.1</h2><ul><li>设置文案更清晰：“使用场景”“自动生成回答建议”。</li><li>首页只保留顶部蓝色更新提示，点击“查看更新”进入“关于”页管理更新。</li><li>旧通用本地语音配置迁移默认采用 Zipformer；已保存的明确引擎选择保持不变。</li><li>保留设置、密钥、模型和历史记录。</li></ul><h3>English</h3><ul><li>Clearer settings labels for usage scenario and automatic answer suggestions.</li><li>One update notice on the settings home page; View Update opens management in About.</li><li>Zipformer for retired generic local speech configurations; explicit saved engine selections remain unchanged.</li><li>Existing settings, credentials, models and history are preserved.</li></ul>]]></description>
+            <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.5.1/LiveCopilot-2.5.1-macOS-universal.dmg" length="37971891" type="application/octet-stream" sparkle:edSignature="4vuY4e2HkOF95vk+sc/KFYK2oRyK5JVLTvWdcaMWCyJATRHbtI7SHrrX6tR2D+JO5ATvyoE3rk5ZqvrbkVtyAw=="/>
+        </item>
+        <item>
             <title>2.5.0</title>
             <pubDate>Sun, 18 Oct 2026 00:26:48 +0800</pubDate>
             <link>https://carey-bk.github.io/LiveCopilot/</link>
@@ -25,37 +35,9 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <description><![CDATA[<h2>LiveCopilot v2.3.0</h2><ul><li>**更简单的首次配置**：按语音语言和知识库需求推荐本地能力，展示真实准备状态及下载资源，支持先用现有能力开始使用。</li><li>**更清晰的模型选择**：新增推荐模型配置、推理深度与处理模式选择，集中展示延迟、生成速度和价格参考；估算数据明确标注。</li><li>**更顺畅的密钥配置**：可直接配置语音 OpenAI 密钥，已保存密钥检查提供明确反馈，连接测试区分常见失败原因。</li><li>**更及时的更新提醒**：主窗口提醒、菜单栏入口和设置页统一管理更新，实时使用期间不打扰；版本号统一为三段式。</li><li>**更自由的悬浮窗**：默认保持自动贴边，也可关闭自动贴边后自由拖动到桌面任意位置。</li><li>Guided setup recommends local capabilities by language and knowledge-base needs, with clear readiness/download status and a quick-start option.</li><li>Model recommendations, reasoning and processing controls, latency, throughput and pricing references are presented together. Estimates remain labeled.</li><li>Speech-key setup, saved-key checks and connection-test feedback are clearer.</li><li>Unified update reminders in the main window, menu and settings stay quiet during live use, with semantic version comparison.</li><li>Turn off automatic edge docking to freely position the floating window.</li></ul>]]></description>
             <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.3.0/LiveCopilot-2.3.0-macOS-universal.dmg" length="36865154" type="application/octet-stream" sparkle:edSignature="mopo1B9YTVat+VfxXYtCleKh4YJ2Lvq24LCyLpWCdRb36jGwe2TDGg2iEvmEBtRkhzCT3PyDzHeflbmc5Z9QBA=="/>
         </item>
-        <item>
-            <title>2.2.0</title>
-            <pubDate>Sat, 10 Oct 2026 20:45:12 +0800</pubDate>
-            <link>https://carey-bk.github.io/LiveCopilot/</link>
-            <sparkle:version>20261010.105949</sparkle:version>
-            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>LiveCopilot 2.2.0</h2>
-<ul>
-<li><strong>混合知识回答</strong>：默认结合你的资料与模型通用知识回答，也可切换为「仅知识库」。引用只展示实际采用的资料。</li>
-<li><strong>中英文自由切换</strong>：回答语言默认 Auto，跟随当前问题；悬浮窗可直接选择中文或 English，支持跨语言使用知识库。</li>
-<li><strong>更及时的自动建议</strong>：改进连续提问和「讲讲」「告诉我」等表达的识别，优化触发与首次检索等待；新增首字耗时和生成状态提示。</li>
-<li><strong>更清晰的模型选择</strong>：提供语音识别选型提示，以及来自 Artificial Analysis、OpenRouter 的首 Token 延迟和生成速度参考。OpenAI 默认模型更新为 GPT-6.1 Sol，支持推理档位的预设在切换时优先选择 low。</li>
-<li><strong>共享时保护悬浮窗</strong>：已通过腾讯会议整个屏幕共享与本地录制验证，对方画面隐藏悬浮窗，本机仍可正常查看和输入；同时保护已验证的苹果拼音候选条，输入时保持箭头鼠标。</li>
-<li><strong>更顺手的操作</strong>：语言和知识模式使用一级菜单，统一设置页样式，并支持自定义悬浮窗显示快捷键。</li>
-</ul>
-<h3>English</h3>
-<ul>
-<li><strong>Hybrid knowledge</strong> combines your documents with general model knowledge by default. Knowledge Base Only remains available, with citations limited to documents actually used.</li>
-<li><strong>Flexible answer language</strong> follows each question in Auto mode. Choose 中文 or English directly in the overlay, including answers based on documents in another language.</li>
-<li><strong>Faster automatic suggestions</strong> better recognize consecutive questions and requests such as “explain” or “tell me,” with improved triggering, retrieval preparation, and visible first-answer timing.</li>
-<li><strong>Clearer model selection</strong> adds speech-model guidance and latency/throughput references from Artificial Analysis and OpenRouter. OpenAI now defaults to GPT-6.1 Sol; supported reasoning presets start at low when selected.</li>
-<li><strong>Overlay sharing protection</strong> has been verified with Tencent Meeting full-screen sharing and local recording: the overlay remains usable locally while hidden from the shared image. Verified Apple Pinyin candidates are protected, and text entry keeps the arrow pointer.</li>
-<li><strong>Simpler controls</strong> offer single-level language and knowledge menus, consistent settings pages, and a customizable overlay shortcut.</li>
-</ul>
-]]></description>
-            <enclosure url="https://livecopilot-downloads-hk.oss-cn-hongkong.aliyuncs.com/releases/v2.2.0/LiveCopilot-2.2.0-macOS-universal.dmg" length="36008959" type="application/octet-stream" sparkle:edSignature="qkCH2Oue+6OqykDXr1bYW5XepW9bTgpgD5Dq9kF3YGfDb7Z7ZQj02+R2AXbeSDbEEaEL45Z7b/7Zuiu3K6yVDQ=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: x0+nRMl2TRWGLEHtGy52RabdILLBg/DRj5b+7YqxOwZjacJr51axlRuP0UICtUElyJqTWH/jAooQMNwlWCCDAQ==
-length: 7955
+edSignature: 87LoDAiYLUNEo1KxVn1rwTnWtqex2lYCln5WaMoM8Tbx02kWDgqdhceUdjwD9LUpcw9PnXBWLUN1FQHXy1LYAA==
+length: 6118
 -->
