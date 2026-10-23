@@ -1,0 +1,43 @@
+name: Build custom API fix
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'StealthApp/Sources/**'
+      - '.github/workflows/build-custom-api.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Core checks
+        run: StealthApp/scripts/test-core.sh
+      - name: Build app
+        run: StealthApp/scripts/build.sh
+      - name: Native tests
+        run: |
+          xcodebuild -project StealthApp/LiveCopilot.xcodeproj -scheme LiveCopilot \
+            -configuration Debug -derivedDataPath StealthApp/build CODE_SIGNING_ALLOWED=NO test
+      - name: Package personal build
+        run: |
+          mkdir -p dist staging
+          ditto StealthApp/build/Build/Products/Release/LiveCopilot.app staging/LiveCopilot.app
+          codesign --force --deep --sign - staging/LiveCopilot.app
+          codesign --verify --deep --strict staging/LiveCopilot.app
+          ln -s /Applications staging/Applications
+          cp LICENSE staging/LICENSE.txt
+          printf '%s\n' 'Personal fork build: custom API connection settings restored.' 'Ad-hoc signed; not Apple notarized.' > staging/BuildInfo.txt
+          hdiutil create -volname "LiveCopilot API Fix" -srcfolder staging -ov -format UDZO dist/LiveCopilot-custom-api-fix.dmg
+          hdiutil verify dist/LiveCopilot-custom-api-fix.dmg
+          shasum -a 256 dist/LiveCopilot-custom-api-fix.dmg > dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveCopilot-custom-api-fix
+          path: dist/*
+          if-no-files-found: error

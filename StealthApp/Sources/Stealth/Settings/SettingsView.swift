@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var serviceRole = 0
     @State private var baseURL = ""
     @State private var apiPath = ""
-    @State private var customModel = ""
     @State private var connectionMessage = ""
     @State private var showOpenAIKey = false
     @State private var shortcutConflict = false
@@ -428,7 +427,10 @@ struct SettingsView: View {
     private var analysisService: some View {
         VStack(alignment: .leading, spacing: 18) {
             OnboardingAnswerConfiguration(coordinator: coordinator)
-            if (try? coordinator.settings.analysisCredentialReference()) != nil {
+            if coordinator.settings.reasoningService == .compatible {
+                customService
+                    .onAppear { loadCustomDraft() }
+            } else if (try? coordinator.settings.analysisCredentialReference()) != nil {
                 CredentialEditor(coordinator: coordinator, analysis: coordinator.settings.reasoningService != .sharedOpenAI, analysisLayout: true)
                     .id(try? coordinator.settings.analysisCredentialReference().account)
             }
@@ -460,7 +462,6 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     modelField("API Base URL", value: $baseURL, prompt: "https://your-provider.example/v1")
                     modelField("API path", value: $apiPath, prompt: "chat/completions")
-                    modelField("Reasoning model", value: $customModel)
                     Text(t("Use an HTTPS service supporting streamed Chat Completions. The base URL and path are joined; include /v1 only once.")).font(.caption).foregroundStyle(.secondary)
                     Button(t("Save connection")) { saveCustomConnection() }
                     if !connectionMessage.isEmpty { Text(t(connectionMessage)).font(.caption).foregroundStyle(.secondary) }
@@ -475,16 +476,17 @@ struct SettingsView: View {
         }
     }
     private func loadCustomDraft() {
-        baseURL = coordinator.settings.compatibleBaseURL; apiPath = coordinator.settings.compatiblePath; customModel = coordinator.settings.compatibleModel
+        baseURL = coordinator.settings.compatibleBaseURL
+        apiPath = coordinator.settings.compatiblePath
+        connectionMessage = ""
     }
     private func saveCustomConnection() {
         do {
             _ = try ServiceEndpoint.make(baseURL: baseURL, path: apiPath)
-            guard !customModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CopilotError.message("Enter an analysis model name in Services.") }
+            guard !coordinator.settings.compatibleModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CopilotError.message("Enter an analysis model name in Services.") }
             var settings = coordinator.settings
             settings.compatibleBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             settings.compatiblePath = apiPath.trimmingCharacters(in: .whitespacesAndNewlines)
-            settings.compatibleModel = customModel.trimmingCharacters(in: .whitespacesAndNewlines)
             coordinator.settings = settings
             connectionMessage = "Connection saved. Credentials are scoped to this endpoint."
         } catch { connectionMessage = error.localizedDescription }
