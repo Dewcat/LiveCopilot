@@ -12,6 +12,8 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
@@ -28,7 +30,16 @@ jobs:
         run: |
           mkdir -p dist staging
           ditto StealthApp/build/Build/Products/Release/LiveCopilot.app staging/LiveCopilot.app
-          codesign --force --deep --sign - staging/LiveCopilot.app
+          runtime=staging/LiveCopilot.app/Contents/Resources/LocalRuntime
+          for item in libonnxruntime.dylib libsherpa-onnx-c-api.dylib llama.framework livecopilot-inference; do
+            codesign --force --sign - "$runtime/$item"
+          done
+          sparkle=staging/LiveCopilot.app/Contents/Frameworks/Sparkle.framework
+          for item in Autoupdate Updater.app XPCServices/Downloader.xpc XPCServices/Installer.xpc; do
+            codesign --force --sign - --preserve-metadata=entitlements "$sparkle/Versions/B/$item"
+          done
+          codesign --force --sign - "$sparkle"
+          codesign --force --sign - --entitlements StealthApp/Resources/LiveCopilot.entitlements staging/LiveCopilot.app
           codesign --verify --deep --strict staging/LiveCopilot.app
           ln -s /Applications staging/Applications
           cp LICENSE staging/LICENSE.txt
